@@ -23,7 +23,7 @@ DEFAULTS = {
     "dirs_only": False,
 
     # content control
-    "content_patterns": "*.py;*.txt",
+    "content_patterns": "*.py;*.txt;*.md;*.cmd;*.bat",
     "content_ignore_patterns": "",
     "ignore_patterns": "__pycache__;*.pyc;.git",
 }
