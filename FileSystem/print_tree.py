@@ -1,6 +1,9 @@
 import sys
 import os
+import fnmatch
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../Shared")))
+
 from base_script import BaseScript
 from context import ParamGroup
 from param import Param
@@ -13,11 +16,16 @@ from param import Param
 DEFAULTS = {
     # logging
     "log_level": 20,         # 10=DEBUG, 20=INFO, 30=WARN, 40=ERROR
-    "log_file": "Tree.log",        # e.g. "tree.log"
+    "log_file": "Tree.log",  # e.g. "tree.log"
 
     # script-specific
     "path": ".",
     "dirs_only": False,
+
+    # content control
+    "content_patterns": "*.py;*.txt",
+    "content_ignore_patterns": "",
+    "ignore_patterns": "__pycache__;*.pyc;.git",
 }
 
 
@@ -32,6 +40,11 @@ class PrintTreeScript(BaseScript):
             ParamGroup("Basic", [
                 Param("path", str, DEFAULTS["path"], label="Root path"),
                 Param("dirs_only", bool, DEFAULTS["dirs_only"], label="Directories only"),
+            ]),
+            ParamGroup("Content", [
+                Param("content_patterns", str, DEFAULTS["content_patterns"]),
+                Param("content_ignore_patterns", str, DEFAULTS["content_ignore_patterns"]),
+                Param("ignore_patterns", str, DEFAULTS["ignore_patterns"]),
             ])
         ]
 
@@ -52,6 +65,7 @@ class PrintTreeScript(BaseScript):
     # -------------------------
     # LOGIC
     # -------------------------
+
     def run(self, ctx):
         extra = getattr(self.context, "extra", {})
 
@@ -62,7 +76,7 @@ class PrintTreeScript(BaseScript):
         if os.path.isfile(root):
             root = os.path.dirname(root)
 
-        # if still not valid → fallback to cwd (future-safe)
+        # fallback to cwd
         if not os.path.isdir(root):
             if "cwd" in extra:
                 root = extra["cwd"]
@@ -73,9 +87,27 @@ class PrintTreeScript(BaseScript):
             else:
                 self.log_error(f"Not a directory: {root}")
                 return
+
         dirs_only = ctx["dirs_only"]
 
-        # print root
+        # -------------------------
+        # PATTERN HELPERS
+        # -------------------------
+
+        def parse_patterns(s):
+            return [p.strip() for p in s.split(";") if p.strip()]
+
+        content_patterns = parse_patterns(ctx["content_patterns"])
+        content_ignore = parse_patterns(ctx["content_ignore_patterns"])
+        ignore_patterns = parse_patterns(ctx["ignore_patterns"])
+
+        def match_any(name, patterns):
+            return any(fnmatch.fnmatch(name, p) for p in patterns)
+
+        # -------------------------
+        # START OUTPUT
+        # -------------------------
+
         self.log_info(root)
 
         def walk(path, level):
@@ -89,26 +121,57 @@ class PrintTreeScript(BaseScript):
 
             indent = "    " * (level + 1)
 
-            # separate dirs and files
             dirs = []
             files = []
 
             for e in entries:
+                if match_any(e, ignore_patterns):
+                    continue
+
                 full = os.path.join(path, e)
+
                 if os.path.isdir(full):
                     dirs.append(e)
                 else:
                     files.append(e)
 
-            # process directories FIRST (depth-first)
+            # -------------------------
+            # DIRECTORIES (DFS)
+            # -------------------------
+
             for d in dirs:
                 self.log_info(f"{indent}{d}")
                 walk(os.path.join(path, d), level + 1)
 
-            # then files
+            # -------------------------
+            # FILES
+            # -------------------------
+
             if not dirs_only:
                 for f in files:
                     self.log_info(f"{indent}{f}")
+
+                    # -------------------------
+                    # CONTENT PRINTING
+                    # -------------------------
+
+                    if match_any(f, content_patterns) and not match_any(f, content_ignore):
+                        full_path = os.path.join(path, f)
+
+                        # separator start
+                        self.log_info(f"{indent}// --- Start File: {full_path} ---")
+
+                        try:
+                            with open(full_path, "r", encoding="utf-8") as file:
+                                for line in file:
+                                    line = line.rstrip()
+                                    if line:
+                                        self.log_info(f"{indent}    {line}")
+                        except Exception as e:
+                            self.log_warn(f"Failed to read file: {full_path} ({e})")
+
+                        # separator end
+                        self.log_info(f"{indent}// --- End File: {full_path} ---")
 
         walk(root, 0)
 

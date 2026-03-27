@@ -1,73 +1,181 @@
 # Script Pipeline System
 
-A lightweight, parameter-driven scripting framework designed for use with Double Commander, Total Commander, or standalone CLI workflows.
+A lightweight, parameter-driven scripting framework designed for use
+with Double Commander, Total Commander, or standalone CLI workflows.
 
 ## Overview
 
-This system provides a unified way to build reusable scripts that can run in three modes:
-- **Default mode**: executes with smart defaults (fast execution)
-- **Interactive mode (TUI)**: powered by Textual for editing parameters
-- **CLI mode**: full control via command-line arguments
+This system provides a unified way to build reusable scripts that can
+run in three modes:
 
-## Key Features
+-   **Default mode**: executes with smart defaults (fast execution)
+-   **CLI mode**: full control via command-line arguments
+-   **Interactive mode (TUI)** *(planned)*: powered by Textual
 
-- **Parameter-driven design**
-  - All scripts define parameters using a structured `Param` system
-  - Supports types, defaults, hints, and validation
+------------------------------------------------------------------------
 
-- **Smart defaults**
-  - Scripts can run instantly without user input
-  - Defaults can adapt based on context (e.g. selected files)
+## Key Concepts
 
-- **Interactive Textual UI**
-  - Clean terminal-based interface (no external windows)
-  - Edit parameters in a form-like layout
-  - Keyboard-first navigation
-  - Dynamic visibility of fields
+### 1. Single Source of Truth (Param)
 
-- **Recent parameters**
-  - Quickly reuse recently executed parameter sets
-  - No full preset system (yet), but designed to support it later
+All script behavior is defined through `Param`:
 
-- **Preview support**
-  - Scripts can show expected results before execution
-  - Ideal for file operations (rename, convert, resize)
+-   Name → CLI argument
+-   Type → parsing + validation
+-   Default → initial value
 
-- **Shared core**
-  - Common logic lives in `BaseScript` and `ScriptEnv`
-  - UI (CLI/TUI) is separated from execution logic
+``` python
+Param("path", str, ".")
+Param("dirs_only", bool, False)
+```
+
+From this, the system automatically generates:
+
+``` bash
+--path D:\temp
+--dirs_only
+--no-dirs_only
+```
+
+------------------------------------------------------------------------
+
+### 2. Defaults (User Editable)
+
+Each script defines a `DEFAULTS` dictionary at the top:
+
+``` python
+DEFAULTS = {
+    "path": ".",
+    "dirs_only": False,
+    "log_level": 20,
+    "log_file": "Tree.log",
+}
+```
+
+Purpose: - Quick manual tweaking - No need to touch shared code
+
+------------------------------------------------------------------------
+
+### 3. Execution Flow
+
+Final parameter values are resolved in this order:
+
+    DEFAULTS → CLI args → External context (Double Commander)
+
+------------------------------------------------------------------------
+
+### 4. Logging System
+
+Built-in structured logging:
+
+``` python
+self.log_debug("debug")
+self.log_info("info")
+self.log_warn("warning")
+self.log_error("error")
+```
+
+Features: - Log levels (10--40) - Configurable prefixes - Optional file
+output - Clean output (no prefix for INFO)
+
+------------------------------------------------------------------------
+
+### 5. CLI Support (argparse)
+
+CLI is automatically generated from `Param`.
+
+Supported: - `--key value` - `--key=value` - boolean flags (`--flag`,
+`--no-flag`) - `--help`
+
+Example:
+
+``` bash
+python print_tree.py --path D:\temp --dirs_only --log_level 10
+```
+
+------------------------------------------------------------------------
+
+### 6. Double Commander Integration
+
+Scripts can be launched like:
+
+``` bash
+print_tree.py --cwd "%p" --selected %F
+```
+
+The system captures these into:
+
+``` python
+self.context.extra = {
+    "cwd": "...",
+    "selected": "..."
+}
+```
+
+Important:
+
+-   `--cwd` may contain a file path → scripts must normalize it
+-   `--selected` points to a file list (future feature)
+
+------------------------------------------------------------------------
+
+### 7. Script Responsibility
+
+**BaseScript** - parses CLI - collects external context - handles
+logging
+
+**Script** - interprets context - defines behavior
+
+Example:
+
+``` python
+if os.path.isfile(root):
+    root = os.path.dirname(root)
+```
+
+------------------------------------------------------------------------
 
 ## Architecture
 
-```
-/shared
-  BaseScript.py
-  ScriptEnv.py
-  Param.py
+    /Shared
+      base_script.py
+      context.py
+      param.py
 
-/ui
-  cli.py
-  textual_ui.py
+    /FileSystem
+      print_tree.py
 
-/scripts
-  resize_images.py
-  rename_files.py
-```
+------------------------------------------------------------------------
 
 ## Philosophy
 
-- Fast by default
-- Minimal user input
-- Keyboard-first workflows
-- Works inside file managers
-- UI is optional, not required
+-   Fast by default
+-   Minimal boilerplate
+-   One definition (Param) → multiple interfaces (CLI, default mode,interactive mode, validation, context integration)
+-   Works inside file managers
+-   Clear separation of concerns
 
-## Future Extensions
+------------------------------------------------------------------------
 
-- Presets system
-- Script composition (pipelines)
-- Plugin system
+## Current Features
 
----
+-   Param-driven system
+-   Script-level defaults
+-   CLI auto-generation
+-   Logging system
+-   Double Commander context support
+-   Clean output formatting
 
-This project aims to turn simple scripts into a consistent, reusable, and user-friendly execution framework.
+------------------------------------------------------------------------
+
+## Next Steps
+
+-   Interactive TUI (Textual)
+-   Selected files parsing
+-   Presets / history
+-   Script discovery system
+
+------------------------------------------------------------------------
+
+This project aims to turn simple scripts into a consistent, reusable,
+and user-friendly execution framework.
