@@ -1,31 +1,39 @@
 # -------------------------
 # CONFIG
 # -------------------------
-
 APP_PADDING = (1, 2)
-
-LABEL_WIDTH = 40        # width of label column
-INPUT_MIN_WIDTH = 20    # safety minimum
-
-SHOW_PARAM_TYPE = True
-
-HEADER_SEPARATOR = "-" * 60
-
+LABEL_WIDTH = 40
+INPUT_MIN_WIDTH = 20
 
 # -------------------------
 # IMPORTS
 # -------------------------
-
 from textual.app import App, ComposeResult
 from textual.widgets import Static, Input, Button
 from textual.containers import Horizontal
 from textual.screen import Screen
 
+# -------------------------
+# HELP BUILDER
+# -------------------------
+def build_help_text(context):
+    lines = []
+
+    lines.append("### HELP")
+    lines.append("agenda: --Parameter (type) = Default value | description")
+    lines.append("")
+
+    for group in context.groups:
+        for p in group.params:
+            desc = f" | {p.description}" if p.description else ""
+            lines.append(f"-- {p.name} ({p.type.__name__}) = {p.default}{desc}")
+
+    return "\n".join(lines)
+
 
 # -------------------------
 # PARAM EDITOR
 # -------------------------
-
 class ParamEditor(Horizontal):
     def __init__(self, param):
         super().__init__()
@@ -33,10 +41,7 @@ class ParamEditor(Horizontal):
         self.input = Input(value=str(param.value), id=param.name)
 
     def compose(self) -> ComposeResult:
-        label = self.param.label
-        if SHOW_PARAM_TYPE:
-            label += f" ({self.param.type.__name__})"
-
+        label = f"-- {self.param.name}"
         yield Static(label, classes="param-label")
         yield self.input
 
@@ -47,7 +52,6 @@ class ParamEditor(Horizontal):
 # -------------------------
 # SCREEN
 # -------------------------
-
 class InteractiveScreen(Screen):
     def __init__(self, context):
         super().__init__()
@@ -55,28 +59,44 @@ class InteractiveScreen(Screen):
         self.editors = []
 
     def compose(self) -> ComposeResult:
-
-        yield Static(f"Script: {self.app.title}")
+        # -------------------------
+        # TITLE
+        # -------------------------
+        yield Static(f"## {self.app.title}")
         yield Static("")
 
         # -------------------------
-        # PARAMS (NATURAL FLOW)
+        # HELP
         # -------------------------
-        for group in self.context.groups:
-            yield Static(f"[{group.name}]")
+        yield Static(build_help_text(self.context))
+        yield Static("")
 
+        # -------------------------
+        # CURRENT PARAMETERS
+        # -------------------------
+        yield Static("### Current parameters")
+        yield Static("")
+
+        for group in self.context.groups:
             for param in group.params:
                 editor = ParamEditor(param)
                 self.editors.append(editor)
                 yield editor
 
-            yield Static("")
+        yield Static("")
 
-        yield Static(HEADER_SEPARATOR)
+        # -------------------------
+        # PRESETS (EMPTY)
+        # -------------------------
+        yield Static("### Presets")
+        yield Static("(not implemented yet)")
+        yield Static("")
 
         # -------------------------
         # ACTIONS
         # -------------------------
+        yield Static("-------")
+
         yield Horizontal(
             Button("RUN", id="run"),
             Button("EXIT", id="exit"),
@@ -85,7 +105,6 @@ class InteractiveScreen(Screen):
     # -------------------------
     # EVENTS
     # -------------------------
-
     def on_button_pressed(self, event: Button.Pressed):
         if event.button.id == "run":
             self.apply_values()
@@ -97,7 +116,6 @@ class InteractiveScreen(Screen):
     # -------------------------
     # APPLY VALUES
     # -------------------------
-
     def apply_values(self):
         for editor in self.editors:
             param = editor.param
@@ -108,9 +126,7 @@ class InteractiveScreen(Screen):
 # -------------------------
 # APP
 # -------------------------
-
 class InteractiveApp(App):
-
     def __init__(self, context, title="Script"):
         super().__init__()
         self.context = context
@@ -119,7 +135,6 @@ class InteractiveApp(App):
 
     def _build_css(self):
         pad_v, pad_h = APP_PADDING
-
         return f"""
         Screen {{
             padding: {pad_v} {pad_h};
