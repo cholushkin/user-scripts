@@ -1,0 +1,10 @@
+INTERACTIVE MODE
+
+- Default values come from the script
+- CLI arguments override defaults
+- Interactive mode lets you override values before execution
+
+NOTES:
+- Changes here do NOT modify script defaults
+- Defaults must be edited in the script
+- Presets (future) will allow saving configurations

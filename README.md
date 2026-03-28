@@ -1,3 +1,4 @@
+
 # Script Pipeline System
 
 A lightweight, parameter-driven scripting framework designed for use
@@ -8,9 +9,9 @@ with Double Commander, Total Commander, or standalone CLI workflows.
 This system provides a unified way to build reusable scripts that can
 run in three modes:
 
--   **Default mode**: executes with smart defaults (fast execution)
--   **CLI mode**: full control via command-line arguments
--   **Interactive mode (TUI)** *(planned)*: powered by Textual
+- **Default mode**: executes with smart defaults (fast execution)
+- **CLI mode**: full control via command-line arguments
+- **Interactive mode (GUI)**: powered by Dear PyGui
 
 ------------------------------------------------------------------------
 
@@ -20,18 +21,19 @@ run in three modes:
 
 All script behavior is defined through `Param`:
 
--   Name → CLI argument
--   Type → parsing + validation
--   Default → initial value
+- Name → CLI argument
+- Type → parsing + validation
+- Default → initial value
+- Hints → optional UI/CLI suggestions
 
-``` python
+```python
 Param("path", str, ".")
 Param("dirs_only", bool, False)
 ```
 
-From this, the system automatically generates:
+Automatically generates:
 
-``` bash
+```bash
 --path D:\temp
 --dirs_only
 --no-dirs_only
@@ -41,18 +43,19 @@ From this, the system automatically generates:
 
 ### 2. Defaults (User Editable)
 
-Each script defines a `DEFAULTS` dictionary at the top:
+Each script defines a `DEFAULTS` dictionary:
 
-``` python
+```python
 DEFAULTS = {
     "path": ".",
     "dirs_only": False,
     "log_level": 20,
-    "log_file": "Tree.log",
 }
 ```
 
-Purpose: - Quick manual tweaking - No need to touch shared code
+Purpose:
+- Quick manual tweaking
+- No need to touch shared code
 
 ------------------------------------------------------------------------
 
@@ -60,122 +63,144 @@ Purpose: - Quick manual tweaking - No need to touch shared code
 
 Final parameter values are resolved in this order:
 
-    DEFAULTS → CLI args → External context (Double Commander)
+DEFAULTS → CLI args → Interactive UI → External context
 
 ------------------------------------------------------------------------
 
-### 4. Logging System
+### 4. Interactive GUI Mode
 
-Built-in structured logging:
+Powered by **Dear PyGui**.
 
-``` python
+Features:
+- Auto-generated UI from `Param`
+- Dropdowns via `hints`
+- Boolean → checkbox
+- Int → numeric input
+- String → text input
+- Help section with defaults
+- External help loaded from `how_it_works.txt`
+
+Example hint usage:
+
+```python
+Param(
+    "log_level",
+    int,
+    20,
+    hints={
+        "10 - DEBUG": 10,
+        "20 - INFO": 20,
+        "30 - WARN": 30,
+        "40 - ERROR": 40,
+    }
+)
+```
+
+UI shows:
+```
+10 - DEBUG
+20 - INFO
+```
+
+Internal value remains numeric.
+
+------------------------------------------------------------------------
+
+### 5. Logging System
+
+```python
 self.log_debug("debug")
 self.log_info("info")
 self.log_warn("warning")
 self.log_error("error")
 ```
 
-Features: - Log levels (10--40) - Configurable prefixes - Optional file
-output - Clean output (no prefix for INFO)
+Features:
+- Log levels (10–40)
+- Optional file output
+- Clean formatting
 
 ------------------------------------------------------------------------
 
-### 5. CLI Support (argparse)
+### 6. CLI Support
 
-CLI is automatically generated from `Param`.
+Auto-generated via argparse:
 
-Supported: - `--key value` - `--key=value` - boolean flags (`--flag`,
-`--no-flag`) - `--help`
+Supported:
+- `--key value`
+- `--key=value`
+- `--flag` / `--no-flag`
 
 Example:
 
-``` bash
+```bash
 python print_tree.py --path D:\temp --dirs_only --log_level 10
 ```
 
 ------------------------------------------------------------------------
 
-### 6. Double Commander Integration
+### 7. Double Commander Integration
 
-Scripts can be launched like:
-
-``` bash
+```bash
 print_tree.py --cwd "%p" --selected %F
 ```
 
-The system captures these into:
+Captured as:
 
-``` python
+```python
 self.context.extra = {
     "cwd": "...",
     "selected": "..."
 }
 ```
 
-Important:
-
--   `--cwd` may contain a file path → scripts must normalize it
--   `--selected` points to a file list (future feature)
-
-------------------------------------------------------------------------
-
-### 7. Script Responsibility
-
-**BaseScript** - parses CLI - collects external context - handles
-logging
-
-**Script** - interprets context - defines behavior
-
-Example:
-
-``` python
-if os.path.isfile(root):
-    root = os.path.dirname(root)
-```
-
 ------------------------------------------------------------------------
 
 ## Architecture
 
-    /Shared
-      base_script.py
-      context.py
-      param.py
+```
+/Shared
+  base_script.py
+  context.py
+  param.py
+  interactive_app.py
 
-    /FileSystem
-      print_tree.py
+/FileSystem
+  print_tree.py
+```
 
 ------------------------------------------------------------------------
 
 ## Philosophy
 
--   Fast by default
--   Minimal boilerplate
--   One definition (Param) → multiple interfaces (CLI, default mode,interactive mode, validation, context integration)
--   Works inside file managers
--   Clear separation of concerns
+- Fast by default
+- Minimal boilerplate
+- One definition → multiple interfaces
+- Clean separation of concerns
+- Works in GUI + CLI environments
 
 ------------------------------------------------------------------------
 
 ## Current Features
 
--   Param-driven system
--   Script-level defaults
--   CLI auto-generation
--   Logging system
--   Double Commander context support
--   Clean output formatting
+- Param-driven system
+- CLI auto-generation
+- Interactive GUI (Dear PyGui)
+- Logging system
+- External help support
+- Context integration
 
 ------------------------------------------------------------------------
 
 ## Next Steps
 
--   Interactive TUI (Textual)
--   Selected files parsing
--   Presets / history
--   Script discovery system
+- Presets system
+- Collapsible UI sections
+- File pickers for paths
+- History / last used params
+- Script discovery
 
 ------------------------------------------------------------------------
 
-This project aims to turn simple scripts into a consistent, reusable,
-and user-friendly execution framework.
+This project aims to turn simple scripts into a consistent,
+reusable, and user-friendly execution framework.
