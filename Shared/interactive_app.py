@@ -1,17 +1,18 @@
 # -------------------------
 # CONFIG
 # -------------------------
-APP_PADDING = (1, 2)
 LABEL_WIDTH = 40
-INPUT_MIN_WIDTH = 20
 
 # -------------------------
 # IMPORTS
 # -------------------------
+import os
+
 from textual.app import App, ComposeResult
 from textual.widgets import Static, Input, Button
 from textual.containers import Horizontal
 from textual.screen import Screen
+
 
 # -------------------------
 # HELP BUILDER
@@ -41,8 +42,7 @@ class ParamEditor(Horizontal):
         self.input = Input(value=str(param.value), id=param.name)
 
     def compose(self) -> ComposeResult:
-        label = f"-- {self.param.name}"
-        yield Static(label, classes="param-label")
+        yield Static(f"-- {self.param.name}", classes="param-label")
         yield self.input
 
     def get_value(self):
@@ -59,21 +59,15 @@ class InteractiveScreen(Screen):
         self.editors = []
 
     def compose(self) -> ComposeResult:
-        # -------------------------
         # TITLE
-        # -------------------------
         yield Static(f"## {self.app.title}")
         yield Static("")
 
-        # -------------------------
         # HELP
-        # -------------------------
         yield Static(build_help_text(self.context))
         yield Static("")
 
-        # -------------------------
-        # CURRENT PARAMETERS
-        # -------------------------
+        # PARAMETERS
         yield Static("### Current parameters")
         yield Static("")
 
@@ -85,16 +79,12 @@ class InteractiveScreen(Screen):
 
         yield Static("")
 
-        # -------------------------
-        # PRESETS (EMPTY)
-        # -------------------------
+        # PRESETS
         yield Static("### Presets")
         yield Static("(not implemented yet)")
         yield Static("")
 
-        # -------------------------
         # ACTIONS
-        # -------------------------
         yield Static("-------")
 
         yield Horizontal(
@@ -118,9 +108,7 @@ class InteractiveScreen(Screen):
     # -------------------------
     def apply_values(self):
         for editor in self.editors:
-            param = editor.param
-            raw = editor.get_value()
-            param.set(raw)
+            editor.param.set(editor.get_value())
 
 
 # -------------------------
@@ -131,33 +119,19 @@ class InteractiveApp(App):
         super().__init__()
         self.context = context
         self.title = title
-        self.CSS = self._build_css()
 
-    def _build_css(self):
-        pad_v, pad_h = APP_PADDING
-        return f"""
-        Screen {{
-            padding: {pad_v} {pad_h};
-        }}
+        # load CSS from file
+        self.CSS = self._load_css()
 
-        Horizontal {{
-            width: 100%;
-            height: auto;
-        }}
+    def _load_css(self):
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        css_path = os.path.join(base_dir, "interactive_app.css")
 
-        .param-label {{
-            width: {LABEL_WIDTH};
-        }}
+        if os.path.exists(css_path):
+            with open(css_path, "r", encoding="utf-8") as f:
+                return f.read()
 
-        Input {{
-            width: 1fr;
-            min-width: {INPUT_MIN_WIDTH};
-        }}
-
-        Button {{
-            margin-right: 1;
-        }}
-        """
+        return ""  # fallback if missing
 
     def on_mount(self):
         self.push_screen(InteractiveScreen(self.context))
