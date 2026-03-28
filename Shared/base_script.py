@@ -1,8 +1,9 @@
 from typing import List, Dict, Optional
-import sys
+import sys, os
+
 from context import ScriptContext, ParamGroup
 from param import Param
-
+from interactive_app import InteractiveApp
 
 # -------------------------
 # LOG LEVELS
@@ -66,11 +67,12 @@ class BaseScript:
         base_group = ParamGroup("Logging", [
             Param("log_level", int, LOG_INFO, hints=[10, 20, 30, 40]),
             Param("log_file", str, None),
+            Param("interactive", bool, False),
         ])
         return groups + [base_group]
 
     # -------------------------
-    # SAFE DEBUG (works before logging ready)
+    # SAFE DEBUG
     # -------------------------
 
     def _debug(self, msg: str):
@@ -81,7 +83,6 @@ class BaseScript:
             if threshold <= LOG_DEBUG:
                 print(f"[DBG] {msg}")
         except Exception:
-            # fallback if context not ready
             print(f"[DBG] {msg}")
 
     # -------------------------
@@ -92,14 +93,11 @@ class BaseScript:
         import argparse
 
         parser = argparse.ArgumentParser()
-
         param_map = {}
 
-        # define CLI from params
         for g in self.context.groups:
             for p in g.params:
                 param_map[p.name] = p
-
                 arg_name = f"--{p.name}"
 
                 if p.type == bool:
@@ -109,16 +107,13 @@ class BaseScript:
                 else:
                     parser.add_argument(arg_name, type=str, default=None)
 
-        # parse args
         args, unknown = parser.parse_known_args()
         args = vars(args)
 
-        # DEBUG (safe)
         self._debug(f"sys.argv = {sys.argv}")
         self._debug(f"known args = {args}")
         self._debug(f"unknown args = {unknown}")
 
-        # apply known params
         for name, value in args.items():
             if value is None:
                 continue
@@ -128,13 +123,9 @@ class BaseScript:
             if not ok:
                 print(f"[ERR] Invalid value for {name}: {value}")
 
-        # -------------------------
-        # EXTRA CONTEXT (DC)
-        # -------------------------
-
         extra = {}
-
         i = 0
+
         while i < len(unknown):
             key = unknown[i]
             val = None
@@ -147,16 +138,14 @@ class BaseScript:
 
             if key == "--cwd":
                 extra["cwd"] = val
-
             elif key == "--selected":
                 extra["selected"] = val
 
         self.context.extra = extra
-
         self._debug(f"extra context = {extra}")
 
     # -------------------------
-    # LOGGING CORE
+    # LOGGING
     # -------------------------
 
     def log(self, level: int, message: str):
@@ -167,10 +156,7 @@ class BaseScript:
             return
 
         prefix = LOG_PREFIXES.get(level, str(level))
-        if prefix:
-            line = f"[{prefix}] {message}"
-        else:
-            line = message
+        line = f"[{prefix}] {message}" if prefix else message
 
         print(line)
 
@@ -189,7 +175,6 @@ class BaseScript:
 
     def _setup_log_file(self, ctx: Dict):
         path = ctx.get("log_file")
-
         if not path:
             return
 
@@ -211,6 +196,24 @@ class BaseScript:
     def execute(self):
         ctx = self.context.to_dict()
 
+        # CTRL override
+        if self._is_left_ctrl_pressed():
+            self._debug("Left CTRL detected → forcing interactive mode")
+            self._set_param("interactive", True)
+            ctx = self.context.to_dict()
+
+        # interactive
+        if ctx.get("interactive"):
+            self._ensure_terminal_size()
+
+            app = InteractiveApp(self.context, title=self.__class__.__name__)
+            result = app.run()
+
+            if result is None:
+                return
+
+            ctx = self.context.to_dict()
+
         self._setup_log_file(ctx)
 
         try:
@@ -219,10 +222,11 @@ class BaseScript:
 
             self.log_info("Parameters:")
             for k, v in ctx.items():
+                if k == "interactive":
+                    continue
                 self.log_info(f"  {k} = {v}")
 
             self.log_info("Output:")
-
             result = self.run(ctx)
 
             if result is not None:
@@ -230,6 +234,35 @@ class BaseScript:
 
         finally:
             self._teardown_log_file()
+
+    # -------------------------
+    # HELPERS
+    # -------------------------
+
+    def _set_param(self, name: str, value):
+        for g in self.context.groups:
+            for p in g.params:
+                if p.name == name:
+                    p.value = value
+                    return
+
+    def _is_left_ctrl_pressed(self) -> bool:
+        if os.name != "nt":
+            return False
+
+        try:
+            import ctypes
+            VK_LCONTROL = 0xA2
+            return (ctypes.windll.user32.GetAsyncKeyState(VK_LCONTROL) & 0x8000) != 0
+        except Exception:
+            return False
+
+    def _ensure_terminal_size(self):
+        if os.name == "nt":
+            try:
+                os.system("mode con: cols=120 lines=40")
+            except Exception:
+                pass
 
     # -------------------------
     # HELP
