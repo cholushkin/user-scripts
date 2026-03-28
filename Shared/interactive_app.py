@@ -1,137 +1,156 @@
-# -------------------------
-# CONFIG
-# -------------------------
-LABEL_WIDTH = 40
-
-# -------------------------
-# IMPORTS
-# -------------------------
-import os
-
-from textual.app import App, ComposeResult
-from textual.widgets import Static, Input, Button
-from textual.containers import Horizontal
-from textual.screen import Screen
+from prompt_toolkit import Application
+from prompt_toolkit.layout import Layout
+from prompt_toolkit.layout.containers import HSplit, VSplit
+from prompt_toolkit.widgets import Label, TextArea, Button
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.styles import Style
 
 
-# -------------------------
-# HELP BUILDER
-# -------------------------
-def build_help_text(context):
-    lines = []
-
-    lines.append("### HELP")
-    lines.append("agenda: --Parameter (type) = Default value | description")
-    lines.append("")
-
-    for group in context.groups:
-        for p in group.params:
-            desc = f" | {p.description}" if p.description else ""
-            lines.append(f"-- {p.name} ({p.type.__name__}) = {p.default}{desc}")
-
-    return "\n".join(lines)
+def build_help_text():
+    return "\n".join([
+        "Navigation:",
+        "  Tab / Shift+Tab  → move between fields",
+        "  Arrow keys       → move cursor inside field",
+        "  Mouse click      → focus field or button",
+        "  Enter            → activate button (when focused)",
+        "  Esc              → exit",
+    ])
 
 
-# -------------------------
-# PARAM EDITOR
-# -------------------------
-class ParamEditor(Horizontal):
-    def __init__(self, param):
-        super().__init__()
-        self.param = param
-        self.input = Input(value=str(param.value), id=param.name)
-
-    def compose(self) -> ComposeResult:
-        yield Static(f"-- {self.param.name}", classes="param-label")
-        yield self.input
-
-    def get_value(self):
-        return self.input.value
-
-
-# -------------------------
-# SCREEN
-# -------------------------
-class InteractiveScreen(Screen):
-    def __init__(self, context):
-        super().__init__()
-        self.context = context
-        self.editors = []
-
-    def compose(self) -> ComposeResult:
-        # TITLE
-        yield Static(f"## {self.app.title}")
-        yield Static("")
-
-        # HELP
-        yield Static(build_help_text(self.context))
-        yield Static("")
-
-        # PARAMETERS
-        yield Static("### Current parameters")
-        yield Static("")
-
-        for group in self.context.groups:
-            for param in group.params:
-                editor = ParamEditor(param)
-                self.editors.append(editor)
-                yield editor
-
-        yield Static("")
-
-        # PRESETS
-        yield Static("### Presets")
-        yield Static("(not implemented yet)")
-        yield Static("")
-
-        # ACTIONS
-        yield Static("-------")
-
-        yield Horizontal(
-            Button("RUN", id="run"),
-            Button("EXIT", id="exit"),
-        )
-
-    # -------------------------
-    # EVENTS
-    # -------------------------
-    def on_button_pressed(self, event: Button.Pressed):
-        if event.button.id == "run":
-            self.apply_values()
-            self.app.exit(result=self.context)
-
-        elif event.button.id == "exit":
-            self.app.exit(result=None)
-
-    # -------------------------
-    # APPLY VALUES
-    # -------------------------
-    def apply_values(self):
-        for editor in self.editors:
-            editor.param.set(editor.get_value())
-
-
-# -------------------------
-# APP
-# -------------------------
-class InteractiveApp(App):
+class InteractiveApp:
     def __init__(self, context, title="Script"):
-        super().__init__()
         self.context = context
         self.title = title
+        self.inputs = []
 
-        # load CSS from file
-        self.CSS = self._load_css()
+    def _build(self):
+        rows = []
 
-    def _load_css(self):
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        css_path = os.path.join(base_dir, "interactive_app.css")
+        # -------------------------
+        # PARAMETERS
+        # -------------------------
+        for group in self.context.groups:
+            rows.append(Label(f"[{group.name}]", style="class:section"))
 
-        if os.path.exists(css_path):
-            with open(css_path, "r", encoding="utf-8") as f:
-                return f.read()
+            for param in group.params:
+                field = TextArea(
+                    text=str(param.value),
+                    height=1,
+                    multiline=False,
+                    style="class:input",
+                    focusable=True,
+                )
 
-        return ""  # fallback if missing
+                self.inputs.append((param, field))
 
-    def on_mount(self):
-        self.push_screen(InteractiveScreen(self.context))
+                row = VSplit([
+                    Label(f"-- {param.name}".ljust(30), style="class:label"),
+                    field
+                ])
+
+                rows.append(row)
+
+            rows.append(Label(""))
+
+        # -------------------------
+        # ACTIONS
+        # -------------------------
+        def on_run():
+            self._apply_values()
+            self.app.exit(result=self.context)
+
+        def on_exit():
+            self.app.exit(result=None)
+
+        run_btn = Button(" RUN ", handler=on_run)
+        exit_btn = Button(" EXIT ", handler=on_exit)
+
+        # style classes for buttons
+        run_btn.window.style = "class:button-run"
+        exit_btn.window.style = "class:button-exit"
+
+        buttons = VSplit(
+            [run_btn, exit_btn],
+            padding=3
+        )
+
+        # -------------------------
+        # KEY BINDINGS
+        # -------------------------
+        kb = KeyBindings()
+
+        @kb.add("tab")
+        def _(event):
+            event.app.layout.focus_next()
+
+        @kb.add("s-tab")
+        def _(event):
+            event.app.layout.focus_previous()
+
+        @kb.add("escape")
+        def _(event):
+            on_exit()
+
+        # -------------------------
+        # LAYOUT (MARKDOWN STYLE)
+        # -------------------------
+        layout = Layout(
+            HSplit([
+                Label(f"## {self.title}", style="class:title"),
+                Label(""),
+
+                Label("### HELP", style="class:section"),
+                Label(build_help_text(), style="class:help"),
+                Label(""),
+
+                Label("### PARAMETERS", style="class:section"),
+                Label(""),
+                *rows,
+
+                Label("### PRESETS", style="class:section"),
+                Label("(empty)", style="class:dim"),
+                Label(""),
+
+                Label("--------------", style="class:footer"),
+                buttons,
+            ])
+        )
+
+        return layout, kb
+
+    def _apply_values(self):
+        for param, field in self.inputs:
+            param.set(field.text)
+
+    def run(self):
+        layout, kb = self._build()
+
+        style = Style.from_dict({
+            # titles
+            "title": "bold underline",
+            "section": "bold",
+
+            # text
+            "label": "",
+            "help": "italic",
+            "dim": "ansigray",
+            "footer": "ansigray",
+
+            # inputs
+            "input": "bg:#202020 #ffffff",
+            "input.focused": "bg:#303060 #ffffff",
+
+            # buttons
+            "button-run": "bg:ansigreen #000000 bold",
+            "button-exit": "bg:ansired #ffffff bold",
+        })
+
+        self.app = Application(
+            layout=layout,
+            key_bindings=kb,
+            full_screen=True,
+            mouse_support=True,
+            style=style,
+        )
+
+        return self.app.run()
