@@ -1,5 +1,3 @@
-# shared/param.py
-
 from typing import Any, Callable, List, Optional
 
 
@@ -13,6 +11,7 @@ class Param:
         hints: Optional[List[Any]] = None,
         visible_if: Optional[Callable[[dict], bool]] = None,
         validate: Optional[Callable[[Any], tuple[bool, str]]] = None,
+        description: Optional[str] = None,
     ):
         self.name = name
         self.type = type_
@@ -22,12 +21,8 @@ class Param:
         self.hints = hints or []
         self.visible_if = visible_if
         self.validate_fn = validate
-
+        self.description = description or ""
         self.error: Optional[str] = None
-
-    # -------------------------
-    # VALUE HANDLING
-    # -------------------------
 
     def set(self, raw_value: Any) -> bool:
         try:
@@ -49,10 +44,6 @@ class Param:
     def reset(self):
         self.value = self.default
         self.error = None
-
-    # -------------------------
-    # STATE
-    # -------------------------
 
     def is_visible(self, context: dict) -> bool:
         if not self.visible_if:
