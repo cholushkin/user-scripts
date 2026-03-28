@@ -1,19 +1,38 @@
 from prompt_toolkit import Application
 from prompt_toolkit.layout import Layout
-from prompt_toolkit.layout.containers import HSplit, VSplit
-from prompt_toolkit.widgets import Label, TextArea, Button
+from prompt_toolkit.layout.containers import HSplit, VSplit, FloatContainer, Float
+from prompt_toolkit.widgets import Label, TextArea, Button, Dialog
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.styles import Style
 
 
-def build_help_text():
+LINE = "─" * 60
+
+
+def build_param_help(context):
+    lines = []
+    for group in context.groups:
+        lines.append(f"[{group.name}]")
+        for p in group.params:
+            line = f"-- {p.name} ({p.type.__name__}) = {p.default}"
+            if p.description:
+                line += f"\n   {p.description}"
+            lines.append(line)
+        lines.append("")
+    return "\n".join(lines)
+
+
+def build_nav_help():
     return "\n".join([
-        "Navigation:",
-        "  Tab / Shift+Tab  → move between fields",
-        "  Arrow keys       → move cursor inside field",
-        "  Mouse click      → focus field or button",
-        "  Enter            → activate button (when focused)",
-        "  Esc              → exit",
+        "Navigation",
+        "",
+        "Tab / Shift+Tab  - move between fields",
+        "Up / Down        - move between fields",
+        "Mouse click      - focus field or button",
+        "Enter            - activate button",
+        "Esc              - exit",
+        "",
+        "Ctrl+L           - refresh screen",
     ])
 
 
@@ -22,39 +41,40 @@ class InteractiveApp:
         self.context = context
         self.title = title
         self.inputs = []
+        self.root_container = None
 
     def _build(self):
         rows = []
 
-        # -------------------------
-        # PARAMETERS
-        # -------------------------
+        max_len = max(len(p.name) for g in self.context.groups for p in g.params)
+        label_width = max_len + 4
+
         for group in self.context.groups:
-            rows.append(Label(f"[{group.name}]", style="class:section"))
+            rows.append(Label(f"[{group.name}]", style="class:group"))
 
             for param in group.params:
                 field = TextArea(
                     text=str(param.value),
                     height=1,
                     multiline=False,
-                    style="class:input",
                     focusable=True,
+                    style="class:input",
                 )
 
                 self.inputs.append((param, field))
 
-                row = VSplit([
-                    Label(f"-- {param.name}".ljust(30), style="class:label"),
-                    field
-                ])
-
-                rows.append(row)
+                rows.append(
+                    VSplit([
+                        Label(
+                            f"-- {param.name}".ljust(label_width),
+                            width=label_width,
+                        ),
+                        field,
+                    ])
+                )
 
             rows.append(Label(""))
 
-        # -------------------------
-        # ACTIONS
-        # -------------------------
         def on_run():
             self._apply_values()
             self.app.exit(result=self.context)
@@ -62,21 +82,29 @@ class InteractiveApp:
         def on_exit():
             self.app.exit(result=None)
 
-        run_btn = Button(" RUN ", handler=on_run)
-        exit_btn = Button(" EXIT ", handler=on_exit)
+        def show_help():
+            dialog = Dialog(
+                title="Navigation",
+                body=Label(build_nav_help()),
+                buttons=[Button("OK", handler=close_dialog)],
+                width=50,
+            )
+            self.root_container.floats.append(Float(content=dialog))
 
-        # style classes for buttons
+        def close_dialog():
+            if self.root_container.floats:
+                self.root_container.floats.pop()
+
+        nav_btn = Button("NAV HELP", handler=show_help)
+        run_btn = Button("RUN", handler=on_run)
+        exit_btn = Button("EXIT", handler=on_exit)
+
+        nav_btn.window.style = "class:button-nav"
         run_btn.window.style = "class:button-run"
         exit_btn.window.style = "class:button-exit"
 
-        buttons = VSplit(
-            [run_btn, exit_btn],
-            padding=3
-        )
+        buttons = VSplit([nav_btn, run_btn, exit_btn], padding=3)
 
-        # -------------------------
-        # KEY BINDINGS
-        # -------------------------
         kb = KeyBindings()
 
         @kb.add("tab")
@@ -87,36 +115,47 @@ class InteractiveApp:
         def _(event):
             event.app.layout.focus_previous()
 
+        @kb.add("down")
+        def _(event):
+            event.app.layout.focus_next()
+
+        @kb.add("up")
+        def _(event):
+            event.app.layout.focus_previous()
+
         @kb.add("escape")
         def _(event):
             on_exit()
 
-        # -------------------------
-        # LAYOUT (MARKDOWN STYLE)
-        # -------------------------
-        layout = Layout(
-            HSplit([
-                Label(f"## {self.title}", style="class:title"),
-                Label(""),
+        @kb.add("c-l")
+        def _(event):
+            event.app.invalidate()
 
-                Label("### HELP", style="class:section"),
-                Label(build_help_text(), style="class:help"),
-                Label(""),
+        content = HSplit([
+            Label(f"## {self.title}", style="class:title"),
+            Label(""),
 
-                Label("### PARAMETERS", style="class:section"),
-                Label(""),
-                *rows,
+            Label("### HELP", style="class:section"),
+            Label(LINE, style="class:line"),
+            Label(build_param_help(self.context)),
+            Label(""),
 
-                Label("### PRESETS", style="class:section"),
-                Label("(empty)", style="class:dim"),
-                Label(""),
+            Label("### PARAMETERS", style="class:section"),
+            Label(LINE, style="class:line"),
+            *rows,
 
-                Label("--------------", style="class:footer"),
-                buttons,
-            ])
-        )
+            Label("### PRESETS", style="class:section"),
+            Label(LINE, style="class:line"),
+            Label("(empty)", style="class:dim"),
+            Label(""),
 
-        return layout, kb
+            Label(LINE, style="class:line"),
+            buttons,
+        ])
+
+        self.root_container = FloatContainer(content=content, floats=[])
+
+        return Layout(self.root_container), kb
 
     def _apply_values(self):
         for param, field in self.inputs:
@@ -126,21 +165,16 @@ class InteractiveApp:
         layout, kb = self._build()
 
         style = Style.from_dict({
-            # titles
-            "title": "bold underline",
+            "title": "bold",
             "section": "bold",
-
-            # text
-            "label": "",
-            "help": "italic",
+            "group": "bold",
+            "line": "ansigray",
             "dim": "ansigray",
-            "footer": "ansigray",
 
-            # inputs
-            "input": "bg:#202020 #ffffff",
-            "input.focused": "bg:#303060 #ffffff",
+            "input": "bg:#202020 #aaaaaa",
+            "input.focused": "bg:#6060cc #ffffff",
 
-            # buttons
+            "button-nav": "bg:ansiblue #ffffff",
             "button-run": "bg:ansigreen #000000 bold",
             "button-exit": "bg:ansired #ffffff bold",
         })
@@ -148,9 +182,10 @@ class InteractiveApp:
         self.app = Application(
             layout=layout,
             key_bindings=kb,
-            full_screen=True,
+            full_screen=False,
             mouse_support=True,
             style=style,
+            refresh_interval=0.5,
         )
 
         return self.app.run()
