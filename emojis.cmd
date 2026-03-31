@@ -1,3 +1,2 @@
 @echo off
-set SCRIPT_DIR=c:\Apps\user-scripts
-epy "%SCRIPT_DIR%\Cheatsheets\emojis_all.py" %*
+epy "c:\Apps\user-scripts\Cheatsheets\emojis_all.py" %*

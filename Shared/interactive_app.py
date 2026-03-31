@@ -6,10 +6,10 @@ import os
 # CONFIG
 # -------------------------
 VIEWPORT_WIDTH = 720
-VIEWPORT_HEIGHT = 1200
+VIEWPORT_HEIGHT = 800
 
 WINDOW_WIDTH = 700
-WINDOW_HEIGHT = 1200
+WINDOW_HEIGHT = 700
 
 HELP_FILE = "how_it_works.txt"
 
