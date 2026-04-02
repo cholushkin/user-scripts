@@ -4,7 +4,7 @@ import os
 
 from context import ScriptContext, ParamGroup
 from param import Param
-from interactive_app import InteractiveApp
+from im_app import ImApp
 
 
 LOG_DEBUG = 10
@@ -217,7 +217,7 @@ class BaseScript:
             ctx = self.context.to_dict()
 
         if ctx.get("interactive"):
-            app = InteractiveApp(self.context, title=self.__class__.__name__)
+            app = ImApp(self.context, title=self.__class__.__name__)
             result = app.run()
 
             if result is None:

@@ -26,7 +26,17 @@ class Param:
 
     def set(self, raw_value: Any) -> bool:
         try:
-            casted = self.type(raw_value)
+            if self.type == str:
+                if raw_value is None:
+                    casted = ""
+                else:
+                    casted = str(raw_value)
+            else:
+                if raw_value is None:
+                    casted = None
+                else:
+                    casted = self.type(raw_value)
+
         except Exception:
             self.error = f"Invalid type ({self.type.__name__})"
             return False
@@ -42,7 +52,10 @@ class Param:
         return True
 
     def reset(self):
-        self.value = self.default
+        if self.type == str and self.default is None:
+            self.value = ""
+        else:
+            self.value = self.default
         self.error = None
 
     def is_visible(self, context: dict) -> bool:
