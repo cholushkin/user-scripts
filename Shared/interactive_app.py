@@ -18,16 +18,16 @@ class InteractiveApp:
         self.context = context
         self.title = title
         self.result = None
-
         self.presets = []
         self.ui_state = {}
         self.selected_preset = None
-
         self.logger = InteractiveLogger()
         self.log_lines = []
-
         self._load_or_create_presets()
 
+    # -------------------------
+    # PRESET FILE
+    # -------------------------
     def _get_preset_file(self):
         script_path = os.path.abspath(sys.argv[0])
         script_dir = os.path.dirname(script_path)
@@ -40,6 +40,9 @@ class InteractiveApp:
     def _get_current_snapshot(self):
         return {p.name: p.value for g in self.context.groups for p in g.params}
 
+    # -------------------------
+    # LOAD / SAVE
+    # -------------------------
     def _load_or_create_presets(self):
         path = self._get_preset_file()
         data = None
@@ -70,10 +73,11 @@ class InteractiveApp:
             if isinstance(p, dict) and "name" in p and "values" in p
         ]
 
+        # Ensure Default preset exists
         if not any(p["name"] == "Default" for p in self.presets):
             self.presets.insert(0, {
                 "name": "Default",
-                "values": self._get_default_snapshot()
+                "values": self._get_default_snapshot().copy()
             })
             self.logger.log("[PRESET] Default created")
 
@@ -91,6 +95,9 @@ class InteractiveApp:
         except Exception as e:
             self.logger.log(f"[PRESET] Save failed: {e}")
 
+    # -------------------------
+    # UI STATE
+    # -------------------------
     def _sync_ui_state(self):
         for key, tag in [
             ("help_open", "help_header"),
@@ -102,6 +109,9 @@ class InteractiveApp:
             except Exception:
                 pass
 
+    # -------------------------
+    # LOGGING
+    # -------------------------
     def _ui_log_sink(self, msg):
         self.log_lines.append(msg)
         if dpg.does_item_exist("log_text"):
@@ -112,6 +122,9 @@ class InteractiveApp:
         if dpg.does_item_exist("log_text"):
             dpg.set_value("log_text", "")
 
+    # -------------------------
+    # PRESET APPLY
+    # -------------------------
     def _on_preset_click(self, sender, app_data, user_data):
         self._apply_preset(user_data)
 
@@ -119,10 +132,12 @@ class InteractiveApp:
         if not preset or "values" not in preset:
             return
 
+        values = preset["values"].copy()  # 🔥 prevent mutation bugs
+
         for g in self.context.groups:
             for p in g.params:
-                if p.name in preset["values"]:
-                    p.value = preset["values"][p.name]
+                if p.name in values:
+                    p.value = values[p.name]
 
         self.selected_preset = preset["name"]
         self.logger.log(f"[PRESET] Applied: {preset['name']}")
@@ -139,12 +154,18 @@ class InteractiveApp:
                     except Exception:
                         pass
 
+    # -------------------------
+    # HELP
+    # -------------------------
     def _load_help_text(self):
         base_dir = os.path.dirname(os.path.abspath(__file__))
         path = os.path.join(base_dir, HELP_FILE)
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
 
+    # -------------------------
+    # SAVE PRESET
+    # -------------------------
     def _open_save_popup(self):
         with dpg.window(label="Save Preset", modal=True, width=400, height=200, tag="save_popup"):
             dpg.add_text("SAVE is not safe operation.\nType preset name to override.")
@@ -153,26 +174,35 @@ class InteractiveApp:
             dpg.add_button(label="Cancel", callback=lambda: dpg.delete_item("save_popup"))
 
     def _confirm_save(self):
-        name = dpg.get_value("save_input")
+        self._collect_values()  # 🔥 CRITICAL FIX
+
+        name = dpg.get_value("save_input").strip()
+        if not name:
+            self.logger.log("[PRESET] Invalid name")
+            return
+
+        snapshot = self._get_current_snapshot().copy()
 
         for p in self.presets:
             if p["name"] == name:
-                p["values"] = self._get_current_snapshot()
+                p["values"] = snapshot
                 self.logger.log(f"[PRESET] Overwritten: {name}")
                 break
         else:
             self.presets.append({
                 "name": name,
-                "values": self._get_current_snapshot()
+                "values": snapshot
             })
             self.logger.log(f"[PRESET] Created: {name}")
 
         self.selected_preset = name
         self._save_presets()
-
         dpg.delete_item("save_popup")
         self._rebuild_presets_ui()
 
+    # -------------------------
+    # DELETE PRESET
+    # -------------------------
     def _open_delete_popup(self):
         with dpg.window(label="Delete Preset", modal=True, width=400, height=200, tag="delete_popup"):
             dpg.add_text("DELETE is not safe operation.\nType preset name to confirm.")
@@ -192,10 +222,12 @@ class InteractiveApp:
 
         self.selected_preset = "Default"
         self._save_presets()
-
         dpg.delete_item("delete_popup")
         self._rebuild_presets_ui()
 
+    # -------------------------
+    # UI BUILDING
+    # -------------------------
     def _rebuild_presets_ui(self):
         if not dpg.does_item_exist("presets_container"):
             return
@@ -220,10 +252,13 @@ class InteractiveApp:
                         dpg.add_combo(items=items, default_value=current, tag=tag, label=p.name)
                     else:
                         dpg.add_combo(items=[str(x) for x in p.hints], default_value=str(val), tag=tag, label=p.name)
+
                 elif p.type == bool:
                     dpg.add_checkbox(label=p.name, default_value=bool(val), tag=tag)
+
                 elif p.type == int:
                     dpg.add_input_int(label=p.name, default_value=int(val), tag=tag)
+
                 else:
                     dpg.add_input_text(label=p.name, default_value=str(val), tag=tag)
 
@@ -235,6 +270,7 @@ class InteractiveApp:
         for preset in self.presets:
             name = preset["name"]
             selected = (name == self.selected_preset)
+
             label = f"> {name}" if selected else name
             color = (255, 255, 0) if selected else (200, 200, 200)
 
@@ -264,6 +300,9 @@ class InteractiveApp:
                 dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, [min(c + 30, 255) for c in color])
         return theme
 
+    # -------------------------
+    # MAIN BUILD
+    # -------------------------
     def _build(self):
         dpg.create_context()
 
@@ -279,6 +318,7 @@ class InteractiveApp:
                         with dpg.group(horizontal=True):
                             dpg.add_text(f"-- {p.name} =")
                             dpg.add_text(str(p.default), color=(255, 255, 0))
+
                         if p.description:
                             dpg.add_text(p.description, color=(120, 120, 120))
 
@@ -323,22 +363,34 @@ class InteractiveApp:
         default = next(p for p in self.presets if p["name"] == "Default")
         self._apply_preset(default)
 
+    # -------------------------
+    # HELP POPUP
+    # -------------------------
     def _show_help_popup(self):
         with dpg.window(label="Interactive Mode Help", modal=True, width=500, height=400):
             dpg.add_text(self._load_help_text(), wrap=450)
 
+    # -------------------------
+    # VALUE COLLECTION
+    # -------------------------
     def _collect_values(self):
         for g in self.context.groups:
             for p in g.params:
                 raw = dpg.get_value(p.name)
+
                 if isinstance(p.hints, dict):
                     raw = p.hints.get(raw, raw)
+
                 try:
                     p.value = p.type(raw)
                 except Exception:
                     pass
+
         self.result = True
 
+    # -------------------------
+    # RUN
+    # -------------------------
     def run(self):
         self._build()
 
@@ -356,4 +408,5 @@ class InteractiveApp:
         self._save_presets()
 
         dpg.destroy_context()
+
         return self.context if self.result else None
