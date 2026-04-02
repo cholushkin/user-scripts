@@ -18,6 +18,7 @@ class InteractiveApp:
         self.context = context
         self.title = title
         self.result = None
+
         self.presets = []
         self.ui_state = {}
         self.selected_preset = None
@@ -47,12 +48,12 @@ class InteractiveApp:
             try:
                 with open(path, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                self.logger.log(f"[PRESET] Loaded file: {path}")
+                self.logger.log(f"[PRESET] Loaded: {path}")
             except Exception as e:
-                self.logger.log(f"[PRESET] Failed to read file, recreating: {e}")
+                self.logger.log(f"[PRESET] Failed to read, recreating: {e}")
                 data = None
         else:
-            self.logger.log(f"[PRESET] File not found, creating new: {path}")
+            self.logger.log(f"[PRESET] Creating new file: {path}")
 
         if not isinstance(data, dict):
             data = {}
@@ -63,10 +64,9 @@ class InteractiveApp:
             "presets_open": True
         })
 
-        raw_presets = data.get("presets", [])
-
+        raw = data.get("presets", [])
         self.presets = [
-            p for p in raw_presets
+            p for p in raw
             if isinstance(p, dict) and "name" in p and "values" in p
         ]
 
@@ -75,7 +75,7 @@ class InteractiveApp:
                 "name": "Default",
                 "values": self._get_default_snapshot()
             })
-            self.logger.log("[PRESET] Created Default preset")
+            self.logger.log("[PRESET] Default created")
 
         self.selected_preset = "Default"
         self._save_presets()
@@ -83,12 +83,24 @@ class InteractiveApp:
     def _save_presets(self):
         path = self._get_preset_file()
         data = {"ui": self.ui_state, "presets": self.presets}
+
         try:
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
-            self.logger.log(f"[PRESET] Saved file: {path}")
+            self.logger.log(f"[PRESET] Saved: {path}")
         except Exception as e:
             self.logger.log(f"[PRESET] Save failed: {e}")
+
+    def _sync_ui_state(self):
+        for key, tag in [
+            ("help_open", "help_header"),
+            ("params_open", "params_header"),
+            ("presets_open", "presets_header"),
+        ]:
+            try:
+                self.ui_state[key] = dpg.get_value(tag)
+            except Exception:
+                pass
 
     def _ui_log_sink(self, msg):
         self.log_lines.append(msg)
@@ -99,6 +111,9 @@ class InteractiveApp:
         self.log_lines.clear()
         if dpg.does_item_exist("log_text"):
             dpg.set_value("log_text", "")
+
+    def _on_preset_click(self, sender, app_data, user_data):
+        self._apply_preset(user_data)
 
     def _apply_preset(self, preset):
         if not preset or "values" not in preset:
@@ -113,6 +128,7 @@ class InteractiveApp:
         self.logger.log(f"[PRESET] Applied: {preset['name']}")
 
         self._refresh_param_widgets()
+        self._rebuild_presets_ui()
 
     def _refresh_param_widgets(self):
         for g in self.context.groups:
@@ -128,54 +144,6 @@ class InteractiveApp:
         path = os.path.join(base_dir, HELP_FILE)
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
-
-    def _render_parameters(self):
-        for group in self.context.groups:
-            dpg.add_text(f"[{group.name}]", color=(150, 150, 150))
-
-            for param in group.params:
-                tag = param.name
-                value = param.value
-
-                if param.hints:
-                    if isinstance(param.hints, dict):
-                        items = list(param.hints.keys())
-                        current_label = next(
-                            (k for k, v in param.hints.items() if v == value),
-                            items[0]
-                        )
-                        dpg.add_combo(items=items, default_value=current_label, tag=tag, label=param.name)
-                    else:
-                        dpg.add_combo(items=[str(x) for x in param.hints], default_value=str(value), tag=tag, label=param.name)
-
-                elif param.type == bool:
-                    dpg.add_checkbox(label=param.name, default_value=bool(value), tag=tag)
-
-                elif param.type == int:
-                    dpg.add_input_int(label=param.name, default_value=int(value), tag=tag)
-
-                else:
-                    dpg.add_input_text(label=param.name, default_value=str(value), tag=tag)
-
-    def _render_presets_list(self):
-        with dpg.group(tag="presets_container"):
-            for preset in self.presets:
-                name = preset["name"]
-                is_selected = (name == self.selected_preset)
-                label = f"> {name}" if is_selected else name
-                color = (255, 255, 0) if is_selected else (200, 200, 200)
-
-                btn = dpg.add_button(
-                    label=label,
-                    width=-1,
-                    callback=lambda s, a, u=preset: self._apply_preset(u)
-                )
-                dpg.bind_item_theme(btn, self._create_text_theme(color))
-
-            with dpg.group(horizontal=True):
-                dpg.add_button(label="Save", callback=self._open_save_popup)
-                dpg.add_button(label="Clone")
-                dpg.add_button(label="Delete", callback=self._open_delete_popup)
 
     def _open_save_popup(self):
         with dpg.window(label="Save Preset", modal=True, width=400, height=200, tag="save_popup"):
@@ -199,8 +167,11 @@ class InteractiveApp:
             })
             self.logger.log(f"[PRESET] Created: {name}")
 
+        self.selected_preset = name
         self._save_presets()
+
         dpg.delete_item("save_popup")
+        self._rebuild_presets_ui()
 
     def _open_delete_popup(self):
         with dpg.window(label="Delete Preset", modal=True, width=400, height=200, tag="delete_popup"):
@@ -219,8 +190,66 @@ class InteractiveApp:
         self.presets = [p for p in self.presets if p["name"] != name]
         self.logger.log(f"[PRESET] Deleted: {name}")
 
+        self.selected_preset = "Default"
         self._save_presets()
+
         dpg.delete_item("delete_popup")
+        self._rebuild_presets_ui()
+
+    def _rebuild_presets_ui(self):
+        if not dpg.does_item_exist("presets_container"):
+            return
+
+        dpg.delete_item("presets_container", children_only=True)
+
+        with dpg.group(parent="presets_container"):
+            self._render_presets_content()
+
+    def _render_parameters(self):
+        for group in self.context.groups:
+            dpg.add_text(f"[{group.name}]", color=(150, 150, 150))
+
+            for p in group.params:
+                tag = p.name
+                val = p.value
+
+                if p.hints:
+                    if isinstance(p.hints, dict):
+                        items = list(p.hints.keys())
+                        current = next((k for k, v in p.hints.items() if v == val), items[0])
+                        dpg.add_combo(items=items, default_value=current, tag=tag, label=p.name)
+                    else:
+                        dpg.add_combo(items=[str(x) for x in p.hints], default_value=str(val), tag=tag, label=p.name)
+                elif p.type == bool:
+                    dpg.add_checkbox(label=p.name, default_value=bool(val), tag=tag)
+                elif p.type == int:
+                    dpg.add_input_int(label=p.name, default_value=int(val), tag=tag)
+                else:
+                    dpg.add_input_text(label=p.name, default_value=str(val), tag=tag)
+
+    def _render_presets_list(self):
+        with dpg.group(tag="presets_container"):
+            self._render_presets_content()
+
+    def _render_presets_content(self):
+        for preset in self.presets:
+            name = preset["name"]
+            selected = (name == self.selected_preset)
+            label = f"> {name}" if selected else name
+            color = (255, 255, 0) if selected else (200, 200, 200)
+
+            btn = dpg.add_button(
+                label=label,
+                width=-1,
+                callback=self._on_preset_click,
+                user_data=preset
+            )
+
+            dpg.bind_item_theme(btn, self._create_text_theme(color))
+
+        with dpg.group(horizontal=True):
+            dpg.add_button(label="Save", callback=self._open_save_popup)
+            dpg.add_button(label="Delete", callback=self._open_delete_popup)
 
     def _create_text_theme(self, color):
         with dpg.theme() as theme:
@@ -241,7 +270,7 @@ class InteractiveApp:
         with dpg.window(label=self.title, width=SCRIPT_WINDOW_WIDTH, height=SCRIPT_WINDOW_HEIGHT):
 
             dpg.add_text("### HELP", color=(255, 255, 0))
-            with dpg.collapsing_header(label="", default_open=self.ui_state.get("help_open", True)):
+            with dpg.collapsing_header(tag="help_header", default_open=self.ui_state.get("help_open", True)):
                 dpg.add_button(label="How it works", callback=self._show_help_popup)
 
                 for group in self.context.groups:
@@ -254,11 +283,11 @@ class InteractiveApp:
                             dpg.add_text(p.description, color=(120, 120, 120))
 
             dpg.add_text("### PARAMETERS", color=(255, 255, 0))
-            with dpg.collapsing_header(label="", default_open=self.ui_state.get("params_open", True)):
+            with dpg.collapsing_header(tag="params_header", default_open=self.ui_state.get("params_open", True)):
                 self._render_parameters()
 
             dpg.add_text("### PRESETS", color=(255, 255, 0))
-            with dpg.collapsing_header(label="", default_open=self.ui_state.get("presets_open", True)):
+            with dpg.collapsing_header(tag="presets_header", default_open=self.ui_state.get("presets_open", True)):
                 self._render_presets_list()
 
             dpg.add_separator()
@@ -305,12 +334,7 @@ class InteractiveApp:
                 if isinstance(p.hints, dict):
                     raw = p.hints.get(raw, raw)
                 try:
-                    if p.type == bool:
-                        p.value = bool(raw)
-                    elif p.type == int:
-                        p.value = int(raw)
-                    else:
-                        p.value = str(raw)
+                    p.value = p.type(raw)
                 except Exception:
                     pass
         self.result = True
@@ -327,6 +351,9 @@ class InteractiveApp:
         dpg.setup_dearpygui()
         dpg.show_viewport()
         dpg.start_dearpygui()
-        dpg.destroy_context()
 
+        self._sync_ui_state()
+        self._save_presets()
+
+        dpg.destroy_context()
         return self.context if self.result else None
