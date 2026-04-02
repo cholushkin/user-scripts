@@ -36,6 +36,9 @@ class InteractiveApp:
     def _get_default_snapshot(self):
         return {p.name: p.default for g in self.context.groups for p in g.params}
 
+    def _get_current_snapshot(self):
+        return {p.name: p.value for g in self.context.groups for p in g.params}
+
     def _load_or_create_presets(self):
         path = self._get_preset_file()
         data = None
@@ -44,8 +47,12 @@ class InteractiveApp:
             try:
                 with open(path, "r", encoding="utf-8") as f:
                     data = json.load(f)
-            except Exception:
+                self.logger.log(f"[PRESET] Loaded file: {path}")
+            except Exception as e:
+                self.logger.log(f"[PRESET] Failed to read file, recreating: {e}")
                 data = None
+        else:
+            self.logger.log(f"[PRESET] File not found, creating new: {path}")
 
         if not isinstance(data, dict):
             data = {}
@@ -68,9 +75,9 @@ class InteractiveApp:
                 "name": "Default",
                 "values": self._get_default_snapshot()
             })
+            self.logger.log("[PRESET] Created Default preset")
 
         self.selected_preset = "Default"
-
         self._save_presets()
 
     def _save_presets(self):
@@ -79,24 +86,28 @@ class InteractiveApp:
         try:
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
-        except Exception:
-            pass
+            self.logger.log(f"[PRESET] Saved file: {path}")
+        except Exception as e:
+            self.logger.log(f"[PRESET] Save failed: {e}")
 
     def _ui_log_sink(self, msg):
         self.log_lines.append(msg)
         if dpg.does_item_exist("log_text"):
             dpg.set_value("log_text", "\n".join(self.log_lines))
 
+    def _clear_log(self):
+        self.log_lines.clear()
+        if dpg.does_item_exist("log_text"):
+            dpg.set_value("log_text", "")
+
     def _apply_preset(self, preset):
         if not preset or "values" not in preset:
             return
 
-        values = preset["values"]
-
         for g in self.context.groups:
             for p in g.params:
-                if p.name in values:
-                    p.value = values[p.name]
+                if p.name in preset["values"]:
+                    p.value = preset["values"][p.name]
 
         self.selected_preset = preset["name"]
         self.logger.log(f"[PRESET] Applied: {preset['name']}")
@@ -147,9 +158,6 @@ class InteractiveApp:
                     dpg.add_input_text(label=param.name, default_value=str(value), tag=tag)
 
     def _render_presets_list(self):
-        if dpg.does_item_exist("presets_container"):
-            dpg.delete_item("presets_container", children_only=True)
-
         with dpg.group(tag="presets_container"):
             for preset in self.presets:
                 name = preset["name"]
@@ -162,13 +170,57 @@ class InteractiveApp:
                     width=-1,
                     callback=lambda s, a, u=preset: self._apply_preset(u)
                 )
-
                 dpg.bind_item_theme(btn, self._create_text_theme(color))
 
             with dpg.group(horizontal=True):
-                dpg.add_button(label="Save")
+                dpg.add_button(label="Save", callback=self._open_save_popup)
                 dpg.add_button(label="Clone")
-                dpg.add_button(label="Delete")
+                dpg.add_button(label="Delete", callback=self._open_delete_popup)
+
+    def _open_save_popup(self):
+        with dpg.window(label="Save Preset", modal=True, width=400, height=200, tag="save_popup"):
+            dpg.add_text("SAVE is not safe operation.\nType preset name to override.")
+            dpg.add_input_text(tag="save_input", default_value=self.selected_preset or "")
+            dpg.add_button(label="Confirm", callback=self._confirm_save)
+            dpg.add_button(label="Cancel", callback=lambda: dpg.delete_item("save_popup"))
+
+    def _confirm_save(self):
+        name = dpg.get_value("save_input")
+
+        for p in self.presets:
+            if p["name"] == name:
+                p["values"] = self._get_current_snapshot()
+                self.logger.log(f"[PRESET] Overwritten: {name}")
+                break
+        else:
+            self.presets.append({
+                "name": name,
+                "values": self._get_current_snapshot()
+            })
+            self.logger.log(f"[PRESET] Created: {name}")
+
+        self._save_presets()
+        dpg.delete_item("save_popup")
+
+    def _open_delete_popup(self):
+        with dpg.window(label="Delete Preset", modal=True, width=400, height=200, tag="delete_popup"):
+            dpg.add_text("DELETE is not safe operation.\nType preset name to confirm.")
+            dpg.add_input_text(tag="delete_input")
+            dpg.add_button(label="Confirm", callback=self._confirm_delete)
+            dpg.add_button(label="Cancel", callback=lambda: dpg.delete_item("delete_popup"))
+
+    def _confirm_delete(self):
+        name = dpg.get_value("delete_input")
+
+        if name == "Default":
+            self.logger.log("[PRESET] Cannot delete Default")
+            return
+
+        self.presets = [p for p in self.presets if p["name"] != name]
+        self.logger.log(f"[PRESET] Deleted: {name}")
+
+        self._save_presets()
+        dpg.delete_item("delete_popup")
 
     def _create_text_theme(self, color):
         with dpg.theme() as theme:
@@ -194,12 +246,10 @@ class InteractiveApp:
 
                 for group in self.context.groups:
                     dpg.add_text(f"[{group.name}]", color=(150, 150, 150))
-
                     for p in group.params:
                         with dpg.group(horizontal=True):
                             dpg.add_text(f"-- {p.name} =")
                             dpg.add_text(str(p.default), color=(255, 255, 0))
-
                         if p.description:
                             dpg.add_text(p.description, color=(120, 120, 120))
 
@@ -232,6 +282,11 @@ class InteractiveApp:
                         pos=(SCRIPT_WINDOW_WIDTH + 20, 10),
                         width=LOG_WINDOW_WIDTH,
                         height=LOG_WINDOW_HEIGHT):
+
+            with dpg.group(horizontal=True):
+                dpg.add_button(label="Clear", callback=self._clear_log)
+
+            dpg.add_separator()
             dpg.add_text("", tag="log_text", wrap=LOG_WINDOW_WIDTH - 20)
 
         self.logger.attach_ui(self._ui_log_sink)
@@ -247,10 +302,8 @@ class InteractiveApp:
         for g in self.context.groups:
             for p in g.params:
                 raw = dpg.get_value(p.name)
-
                 if isinstance(p.hints, dict):
                     raw = p.hints.get(raw, raw)
-
                 try:
                     if p.type == bool:
                         p.value = bool(raw)
@@ -260,7 +313,6 @@ class InteractiveApp:
                         p.value = str(raw)
                 except Exception:
                     pass
-
         self.result = True
 
     def run(self):
