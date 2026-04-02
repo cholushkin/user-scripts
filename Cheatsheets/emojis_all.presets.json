@@ -1,0 +1,22 @@
+{
+  "ui": {
+    "help_open": true,
+    "params_open": true,
+    "presets_open": true
+  },
+  "presets": [
+    {
+      "name": "Default",
+      "values": {
+        "group": "all",
+        "columns": 16,
+        "spacing": 1,
+        "max_count": 0,
+        "show_codepoint": false,
+        "log_level": 20,
+        "log_file": null,
+        "interactive": true
+      }
+    }
+  ]
+}

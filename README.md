@@ -1,29 +1,29 @@
 # Script Pipeline System
 
-Designed to be used together with **OFM** (file manager) as a lightweight way to run scripts like built-in tools.
+Designed to be used together with **OFM** as a lightweight way to run
+scripts like built-in tools.
 
----
+------------------------------------------------------------------------
 
-## Why backends?
+## Environments (Backends)
 
-Scripts run inside isolated environments:
+Scripts run through `epy.bat`, which can use different backends:
 
-- **micromamba (default)** — fast, portable, no activation  
-- **conda** — useful if you already depend on existing environments  
+-   **conda** (current default)
+-   **micromamba**
+-   **default** (system Python)
 
-You can switch backend in `epy.bat`.
+You can configure backend in `epy.bat`.
 
----
+------------------------------------------------------------------------
 
 ## Running scripts
 
 Main entry point:
 
-```
-epy script.py
-```
+    epy script.py
 
----
+------------------------------------------------------------------------
 
 ## Ways to run
 
@@ -31,37 +31,58 @@ epy script.py
 
 Run with arguments. Uses default values if not provided.
 
-```
-epy script.py --param value
-```
+    epy script.py --param value
 
----
+------------------------------------------------------------------------
 
 ### 2. Aliases
 
 Wrap scripts as commands using `.cmd` files and PATH.
 
-```
-tree
-```
+    tree
 
----
+------------------------------------------------------------------------
 
 ### 3. Interactive mode
 
-Hold **Left Ctrl** while running to open UI and override parameters before execution.
+Hold **Left Ctrl** while running to open UI.
 
----
+Features: - Edit parameters before execution - Presets (saved per
+script) - Embedded log viewer - Separate interactive log file:
+`<script>.im_mode.log`
+
+------------------------------------------------------------------------
 
 ### 4. From OFM panel
 
-Scripts can be triggered directly from OFM, using current directory / selection as context.
+Scripts can be triggered directly from OFM using current directory or
+selection.
 
----
+------------------------------------------------------------------------
+
+## Logging
+
+-   **Interactive mode logs** → `<script>.im_mode.log`
+-   **Base script logs** → current working directory (via `log_file`
+    param)
+
+------------------------------------------------------------------------
+
+## Interactive mode notes
+
+-   Defaults come from the script (`DEFAULTS`)
+-   CLI arguments override defaults
+-   UI overrides everything before execution
+-   Presets are stored next to script: `<script>.presets.json`
+
+------------------------------------------------------------------------
 
 ## Philosophy
 
-- Scripts behave like CLI tools  
-- No global dependencies  
-- Minimal setup  
-- Works both standalone and inside OFM
+-   Scripts behave like CLI tools
+-   No global dependencies
+-   Minimal setup
+-   Same script works:
+    -   CLI
+    -   Interactive UI
+    -   OFM integration
