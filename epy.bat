@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 
-set BACKEND=micromamba
+set BACKEND=conda
 set ENV=dev
 
 echo Running %~nx1 under [%BACKEND%:%ENV%]

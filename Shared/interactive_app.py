@@ -6,10 +6,15 @@ import sys
 # -------------------------
 # CONFIG
 # -------------------------
-VIEWPORT_WIDTH = 900
-VIEWPORT_HEIGHT = 800
-WINDOW_WIDTH = 650
-WINDOW_HEIGHT = 760
+HOST_WINDOW_WIDTH = 1400
+HOST_WINDOW_HEIGHT = 1000
+
+SCRIPT_WINDOW_WIDTH = 650
+SCRIPT_WINDOW_HEIGHT = 900
+
+LOG_WINDOW_WIDTH = 600
+LOG_WINDOW_HEIGHT = 740
+
 HELP_FILE = "how_it_works.txt"
 
 
@@ -19,45 +24,28 @@ class InteractiveApp:
         self.title = title
         self.result = None
 
-        # PRESETS
         self.presets = []
         self.ui_state = {}
         self.selected_preset = None
 
-        # LOG
         self.log_lines = []
 
         self._load_or_create_presets()
 
     # -------------------------
-    # PRESET FILE PATH (FIXED)
-    # -------------------------
     def _get_preset_file(self):
         script_path = os.path.abspath(sys.argv[0])
         script_dir = os.path.dirname(script_path)
         script_name = os.path.splitext(os.path.basename(script_path))[0]
-        filename = f"{script_name}.presets.json"
-        return os.path.join(script_dir, filename)
+        return os.path.join(script_dir, f"{script_name}.presets.json")
 
-    # -------------------------
-    # SNAPSHOTS
     # -------------------------
     def _get_default_snapshot(self):
-        return {
-            p.name: p.default
-            for g in self.context.groups
-            for p in g.params
-        }
+        return {p.name: p.default for g in self.context.groups for p in g.params}
 
     def _get_current_snapshot(self):
-        return {
-            p.name: p.value
-            for g in self.context.groups
-            for p in g.params
-        }
+        return {p.name: p.value for g in self.context.groups for p in g.params}
 
-    # -------------------------
-    # LOAD / CREATE PRESETS
     # -------------------------
     def _load_or_create_presets(self):
         path = self._get_preset_file()
@@ -81,7 +69,6 @@ class InteractiveApp:
 
         self.presets = data.get("presets", [])
 
-        # Ensure Default exists
         if not any(p["name"] == "Default" for p in self.presets):
             self.presets.insert(0, {
                 "name": "Default",
@@ -90,15 +77,9 @@ class InteractiveApp:
 
         self._save_presets()
 
-    # -------------------------
-    # SAVE
-    # -------------------------
     def _save_presets(self):
         path = self._get_preset_file()
-        data = {
-            "ui": self.ui_state,
-            "presets": self.presets
-        }
+        data = {"ui": self.ui_state, "presets": self.presets}
         try:
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
@@ -106,17 +87,17 @@ class InteractiveApp:
             pass
 
     # -------------------------
-    # LOGGING (UI)
-    # -------------------------
     def log(self, msg):
         self.log_lines.append(msg)
         if dpg.does_item_exist("log_text"):
             dpg.set_value("log_text", "\n".join(self.log_lines))
 
     # -------------------------
-    # APPLY PRESET
-    # -------------------------
     def _apply_preset(self, preset):
+        if not preset or "values" not in preset:
+            self.log("[PRESET] ERROR: invalid preset")
+            return
+
         values = preset["values"]
 
         for g in self.context.groups:
@@ -125,17 +106,11 @@ class InteractiveApp:
                     p.value = values[p.name]
 
         self.selected_preset = preset["name"]
-
         self.log(f"[PRESET] Applied: {preset['name']}")
 
-        # rebuild UI values
         self._refresh_param_widgets()
-
-        # refresh preset list (highlight)
         self._render_presets_list()
 
-    # -------------------------
-    # REFRESH PARAM UI VALUES
     # -------------------------
     def _refresh_param_widgets(self):
         for g in self.context.groups:
@@ -147,16 +122,12 @@ class InteractiveApp:
                         pass
 
     # -------------------------
-    # HELP
-    # -------------------------
     def _load_help_text(self):
         base_dir = os.path.dirname(os.path.abspath(__file__))
         path = os.path.join(base_dir, HELP_FILE)
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
 
-    # -------------------------
-    # PARAMETERS UI
     # -------------------------
     def _render_parameters(self):
         for group in self.context.groups:
@@ -186,8 +157,6 @@ class InteractiveApp:
                     dpg.add_input_text(label=param.name, default_value=str(value), tag=tag)
 
     # -------------------------
-    # PRESETS UI
-    # -------------------------
     def _render_presets_list(self):
         if dpg.does_item_exist("presets_container"):
             dpg.delete_item("presets_container", children_only=True)
@@ -195,21 +164,24 @@ class InteractiveApp:
         with dpg.group(tag="presets_container"):
             for preset in self.presets:
                 name = preset["name"]
-
                 is_selected = (name == self.selected_preset)
 
                 label = f"> {name}" if is_selected else name
                 color = (255, 255, 0) if is_selected else (200, 200, 200)
 
-                dpg.add_button(
+                btn = dpg.add_button(
                     label=label,
                     width=-1,
                     callback=lambda s, a, u=preset: self._apply_preset(u)
                 )
-                dpg.bind_item_theme(dpg.last_item(), self._create_text_theme(color))
 
-    # -------------------------
-    # SIMPLE TEXT COLOR THEME
+                dpg.bind_item_theme(btn, self._create_text_theme(color))
+
+            with dpg.group(horizontal=True):
+                dpg.add_button(label="Save")
+                dpg.add_button(label="Clone")
+                dpg.add_button(label="Delete")
+
     # -------------------------
     def _create_text_theme(self, color):
         with dpg.theme() as theme:
@@ -217,42 +189,47 @@ class InteractiveApp:
                 dpg.add_theme_color(dpg.mvThemeCol_Text, color)
         return theme
 
-    # -------------------------
-    # BUILD UI
+    def _create_main_button_theme(self, color):
+        with dpg.theme() as theme:
+            with dpg.theme_component(dpg.mvButton):
+                dpg.add_theme_color(dpg.mvThemeCol_Button, color)
+                dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, [min(c + 30, 255) for c in color])
+        return theme
+
     # -------------------------
     def _build(self):
         dpg.create_context()
 
-        # MAIN WINDOW
-        with dpg.window(label=self.title, width=WINDOW_WIDTH, height=WINDOW_HEIGHT):
+        with dpg.window(label=self.title, width=SCRIPT_WINDOW_WIDTH, height=SCRIPT_WINDOW_HEIGHT):
 
             # HELP
             dpg.add_text("### HELP", color=(255, 255, 0))
-            dpg.add_separator()
-            dpg.add_button(label="How it works", callback=self._show_help_popup)
+            with dpg.collapsing_header(label="", default_open=self.ui_state.get("help_open", True)):
+                dpg.add_button(label="How it works", callback=self._show_help_popup)
 
-            for group in self.context.groups:
-                dpg.add_text(f"[{group.name}]", color=(150, 150, 150))
-                for p in group.params:
-                    with dpg.group(horizontal=True):
-                        dpg.add_text(f"-- {p.name} =")
-                        dpg.add_text(str(p.default), color=(255, 255, 0))
-                    if p.description:
-                        dpg.add_text(p.description, color=(120, 120, 120))
+                for group in self.context.groups:
+                    dpg.add_text(f"[{group.name}]", color=(150, 150, 150))
+
+                    for p in group.params:
+                        with dpg.group(horizontal=True):
+                            dpg.add_text(f"-- {p.name} =")
+                            dpg.add_text(str(p.default), color=(255, 255, 0))
+
+                        if p.description:
+                            dpg.add_text(p.description, color=(120, 120, 120))
 
             # PARAMETERS
-            dpg.add_spacer(height=10)
             dpg.add_text("### PARAMETERS", color=(255, 255, 0))
-            dpg.add_separator()
-            self._render_parameters()
+            with dpg.collapsing_header(label="", default_open=self.ui_state.get("params_open", True)):
+                self._render_parameters()
 
             # PRESETS
-            dpg.add_spacer(height=10)
             dpg.add_text("### PRESETS", color=(255, 255, 0))
-            dpg.add_separator()
-            self._render_presets_list()
+            with dpg.collapsing_header(label="", default_open=self.ui_state.get("presets_open", True)):
+                self._render_presets_list()
 
-            # BUTTONS
+            dpg.add_separator()
+
             def on_run():
                 self._collect_values()
                 dpg.stop_dearpygui()
@@ -261,24 +238,23 @@ class InteractiveApp:
                 self.result = None
                 dpg.stop_dearpygui()
 
-            dpg.add_spacer(height=10)
             with dpg.group(horizontal=True):
-                dpg.add_button(label="Run", callback=on_run)
-                dpg.add_button(label="Cancel", callback=on_cancel)
+                run_btn = dpg.add_button(label="Run", width=120, height=40, callback=on_run)
+                cancel_btn = dpg.add_button(label="Cancel", width=120, height=40, callback=on_cancel)
+
+                dpg.bind_item_theme(run_btn, self._create_main_button_theme([0, 120, 0]))
+                dpg.bind_item_theme(cancel_btn, self._create_main_button_theme([120, 0, 0]))
 
         # LOG WINDOW
-        with dpg.window(label="Log", pos=(660, 10), width=220, height=740):
-            dpg.add_text("", tag="log_text", wrap=200)
+        with dpg.window(label="Log", pos=(SCRIPT_WINDOW_WIDTH + 20, 10),
+                        width=LOG_WINDOW_WIDTH, height=LOG_WINDOW_HEIGHT):
+            dpg.add_text("", tag="log_text", wrap=LOG_WINDOW_WIDTH - 20)
 
-    # -------------------------
-    # HELP POPUP
     # -------------------------
     def _show_help_popup(self):
         with dpg.window(label="Interactive Mode Help", modal=True, width=500, height=400):
             dpg.add_text(self._load_help_text(), wrap=450)
 
-    # -------------------------
-    # COLLECT VALUES
     # -------------------------
     def _collect_values(self):
         for g in self.context.groups:
@@ -301,12 +277,14 @@ class InteractiveApp:
         self.result = True
 
     # -------------------------
-    # RUN
-    # -------------------------
     def run(self):
         self._build()
 
-        dpg.create_viewport(title=self.title, width=VIEWPORT_WIDTH, height=VIEWPORT_HEIGHT)
+        dpg.create_viewport(
+            title=self.title,
+            width=HOST_WINDOW_WIDTH,
+            height=HOST_WINDOW_HEIGHT
+        )
 
         dpg.setup_dearpygui()
         dpg.show_viewport()
