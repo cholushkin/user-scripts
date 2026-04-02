@@ -132,7 +132,7 @@ class InteractiveApp:
         if not preset or "values" not in preset:
             return
 
-        values = preset["values"].copy()  # 🔥 prevent mutation bugs
+        values = preset["values"].copy()  
 
         for g in self.context.groups:
             for p in g.params:
@@ -174,7 +174,7 @@ class InteractiveApp:
             dpg.add_button(label="Cancel", callback=lambda: dpg.delete_item("save_popup"))
 
     def _confirm_save(self):
-        self._collect_values()  # 🔥 CRITICAL FIX
+        self._collect_values() 
 
         name = dpg.get_value("save_input").strip()
         if not name:
