@@ -4,28 +4,31 @@ import sounddevice as sd
 
 from SeqParser import SequenceParser, build_timeline
 from SfxBeeper import BeepSfx, SAMPLE_RATE
+from speech_engine import Speech
 
 
 # -------------------------
 # CONFIG
 # -------------------------
 
-SLOT_DURATION = 1.0  # seconds per slot
+SLOT_DURATION = 1.0
 
-# freq (Hz), duration (sec), volume (0–1)
 DEFINITIONS = {
     "M": (880, 0.8, 0.3),
-    "K": (660, 0.6, 0.3),
-    "H": (1200, 0.3, 0.25),
+    "K": (1200, 0.8, 0.3),
 
-    # 🔥 tick (audible marker)
     "S": (1500, 0.03, 0.4),
-
-    # 🔥 real silence
     "_": (0, 0.01, 0.0),
+
+    # 🔥 speech: (text, duration, volume)
+    "R": ("Rest now", 1.5, 1.0),
+    "r": ("Ready", 1.0, 1.0),
+    "s": ("Set", 1.0, 1.0),
+    "g": ("Go", 1.0, 1.0),
+    "Z": ("Stop", 1.0, 1.0),
 }
 
-SEQUENCE = "M3 (H S7 K)*5"
+SEQUENCE = "r s g (M S5 K)*7"
 
 
 # -------------------------
@@ -36,14 +39,10 @@ class Beeper:
     def __init__(self, definitions, sequence, slot_duration=1.0):
         self.slot_duration = slot_duration
 
-        # Parse DSL → timeline
         tokens = SequenceParser(sequence).parse()
         self.timeline = build_timeline(tokens)
 
-        # Pre-generate clips
         self.clips = self.build_clips(definitions)
-
-        # Active playing sounds
         self.active = []
 
     # -------------------------
@@ -52,11 +51,41 @@ class Beeper:
 
     def build_clips(self, definitions):
         clips = {}
+        speech_jobs = {}
 
-        for name, (freq, length, volume) in definitions.items():
-            length = min(length, 0.99)
+        # prepare speech
+        for name, val in definitions.items():
+            if isinstance(val[0], str):
+                text, duration, volume = val
+                speech_jobs[name] = (Speech.prepare(text), duration, volume)
 
-            # true silence
+        if speech_jobs:
+            Speech.generate_all()
+
+        # build clips
+        for name, val in definitions.items():
+
+            # ---------- SPEECH ----------
+            if isinstance(val[0], str):
+                filepath, target_duration, volume = speech_jobs[name]
+
+                samples = Speech.load_numpy(filepath, SAMPLE_RATE)
+                samples *= volume
+
+                target_len = int(target_duration * SAMPLE_RATE)
+
+                if len(samples) > target_len:
+                    samples = samples[:target_len]
+                elif len(samples) < target_len:
+                    pad = np.zeros((target_len - len(samples), 2), dtype=np.float32)
+                    samples = np.vstack((samples, pad))
+
+                clips[name] = samples
+                continue
+
+            # ---------- SOUND ----------
+            freq, length, volume = val
+
             if volume <= 0 or freq <= 0:
                 clips[name] = np.zeros((1, 2), dtype=np.float32)
                 continue
@@ -90,7 +119,6 @@ class Beeper:
 
         self.active = new_active
 
-        # soft normalize
         peak = np.max(np.abs(buffer))
         if peak > 1.0:
             buffer /= peak
@@ -142,10 +170,10 @@ class Beeper:
 
                 self.render(i)
 
-            # let sounds finish
-            time.sleep(1.5)
+            time.sleep(2.0)
 
         print("\nDone.")
+        Speech.cleanup()
 
 
 # -------------------------
