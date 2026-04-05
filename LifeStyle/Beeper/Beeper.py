@@ -28,7 +28,7 @@ DEFINITIONS = {
     "Z": ("Stop", 1.0, 1.0),
 }
 
-SEQUENCE = "r s g (M S5 K)*7"
+SEQUENCE = "r s g (M S5 K)*1 R"
 
 
 # -------------------------
@@ -147,10 +147,6 @@ class Beeper:
     # -------------------------
 
     def run(self):
-        print("\nSequence :", SEQUENCE)
-        print("Timeline :", " ".join(self.timeline))
-        print(f"Slot duration: {self.slot_duration}s\n")
-
         with sd.OutputStream(
             samplerate=SAMPLE_RATE,
             channels=2,
