@@ -9,6 +9,10 @@ set ENV=dev
 
 echo Running %~nx1 under [%BACKEND%:%ENV%]
 
+echo CLI params:
+echo   %*
+echo.
+
 REM -------------------------
 REM BACKENDS
 REM -------------------------
