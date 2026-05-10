@@ -33,12 +33,20 @@ DEFAULTS = {
 
     # output
     "output_dir": ".",
+    "format": "jpg",   # jpg | webp
     "quality": 60,
     "overwrite": False,
 }
 
 
-SUPPORTED_FORMATS = (".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp")
+SUPPORTED_FORMATS = (
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".bmp",
+    ".tiff",
+    ".webp"
+)
 
 
 # -------------------------
@@ -76,6 +84,13 @@ class ImageResizeScript(BaseScript):
 
             ParamGroup("Output", [
                 Param("output_dir", str, DEFAULTS["output_dir"]),
+                Param(
+                    "format",
+                    str,
+                    DEFAULTS["format"],
+                    label="Output format",
+                    description="jpg or webp"
+                ),
                 Param("quality", int, DEFAULTS["quality"]),
                 Param("overwrite", bool, DEFAULTS["overwrite"]),
             ]),
@@ -85,7 +100,10 @@ class ImageResizeScript(BaseScript):
         return DEFAULTS
 
     def preview(self, ctx):
-        return f"Resize images → {ctx['output_dir']}"
+        return (
+            f"Resize images → {ctx['output_dir']} "
+            f"({ctx['format']})"
+        )
 
     # -------------------------
     # CORE LOGIC
@@ -105,9 +123,15 @@ class ImageResizeScript(BaseScript):
 
             elif p.is_dir():
                 if recursive:
-                    files.extend(f for f in p.rglob("*") if f.suffix.lower() in SUPPORTED_FORMATS)
+                    files.extend(
+                        f for f in p.rglob("*")
+                        if f.suffix.lower() in SUPPORTED_FORMATS
+                    )
                 else:
-                    files.extend(f for f in p.glob("*") if f.suffix.lower() in SUPPORTED_FORMATS)
+                    files.extend(
+                        f for f in p.glob("*")
+                        if f.suffix.lower() in SUPPORTED_FORMATS
+                    )
 
         return files
 
@@ -138,13 +162,29 @@ class ImageResizeScript(BaseScript):
         try:
             img = Image.open(path)
 
-            # convert for JPEG
-            if img.mode in ("RGBA", "P"):
-                img = img.convert("RGB")
+            output_format = ctx["format"].lower()
+
+            if output_format not in ("jpg", "webp"):
+                self.log_error(
+                    f"Unsupported output format: {output_format}"
+                )
+                return
+
+            # JPEG does not support alpha
+            if output_format == "jpg":
+                if img.mode in ("RGBA", "P"):
+                    img = img.convert("RGB")
+
+            # palette -> RGBA for WEBP transparency
+            elif output_format == "webp":
+                if img.mode == "P":
+                    img = img.convert("RGBA")
 
             img = self.resize_image(img, ctx)
 
-            output_path = output_dir / (path.stem + ".jpg")
+            output_path = output_dir / (
+                f"{path.stem}.{output_format}"
+            )
 
             if output_path.exists() and not ctx["overwrite"]:
                 self.log_warn(f"Skip exists: {output_path}")
@@ -154,13 +194,28 @@ class ImageResizeScript(BaseScript):
 
             self.log_info(f"{path} -> {output_path}")
 
-            img.save(
-                output_path,
-                "JPEG",
-                quality=ctx["quality"],
-                optimize=True,
-                progressive=True
-            )
+            # -------------------------
+            # SAVE JPG
+            # -------------------------
+            if output_format == "jpg":
+                img.save(
+                    output_path,
+                    "JPEG",
+                    quality=ctx["quality"],
+                    optimize=True,
+                    progressive=True
+                )
+
+            # -------------------------
+            # SAVE WEBP
+            # -------------------------
+            elif output_format == "webp":
+                img.save(
+                    output_path,
+                    "WEBP",
+                    quality=ctx["quality"],
+                    optimize=True
+                )
 
         except Exception as e:
             self.log_error(f"Error processing {path}: {e}")
@@ -175,9 +230,14 @@ class ImageResizeScript(BaseScript):
 
         # 1. Double Commander selection (PRIMARY)
         selected_file = extra.get("selected")
+
         if selected_file and Path(selected_file).exists():
             with open(selected_file, "r", encoding="utf-8") as f:
-                paths.extend(line.strip() for line in f if line.strip())
+                paths.extend(
+                    line.strip()
+                    for line in f
+                    if line.strip()
+                )
 
         # 2. Manual / CLI paths
         if ctx["paths"]:
@@ -191,7 +251,10 @@ class ImageResizeScript(BaseScript):
             self.log_error("No input paths provided")
             return
 
-        images = self.collect_images(paths, ctx["recursive"])
+        images = self.collect_images(
+            paths,
+            ctx["recursive"]
+        )
 
         if not images:
             self.log_warn("No images found")
@@ -200,9 +263,15 @@ class ImageResizeScript(BaseScript):
         output_dir = Path(ctx["output_dir"])
 
         for img_path in images:
-            self.process_image(img_path, output_dir, ctx)
+            self.process_image(
+                img_path,
+                output_dir,
+                ctx
+            )
 
-        self.log_info(f"Done. Processed {len(images)} images.")
+        self.log_info(
+            f"Done. Processed {len(images)} images."
+        )
 
 
 # -------------------------

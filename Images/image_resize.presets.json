@@ -1,0 +1,63 @@
+{
+  "ui": {
+    "help_open": true,
+    "params_open": true,
+    "presets_open": true
+  },
+  "presets": [
+    {
+      "name": "Default",
+      "values": {
+        "paths": "",
+        "recursive": false,
+        "scale": 0.5,
+        "width": 0,
+        "height": 0,
+        "keep_aspect": true,
+        "output_dir": ".",
+        "format": "jpg",
+        "quality": 60,
+        "overwrite": false,
+        "log_level": 20,
+        "log_file": null,
+        "interactive": true
+      }
+    },
+    {
+      "name": "Thumbnails",
+      "values": {
+        "paths": "",
+        "recursive": false,
+        "scale": 0.5,
+        "width": 320,
+        "height": 240,
+        "keep_aspect": true,
+        "output_dir": ".",
+        "format": "webp",
+        "quality": 80,
+        "overwrite": false,
+        "log_level": 20,
+        "log_file": "",
+        "interactive": true
+      }
+    },
+    {
+      "name": "ToJpg",
+      "values": {
+        "paths": "",
+        "recursive": false,
+        "scale": 1.0,
+        "width": 0,
+        "height": 0,
+        "keep_aspect": true,
+        "output_dir": ".",
+        "format": "jpg",
+        "quality": 80,
+        "overwrite": false,
+        "log_level": 20,
+        "log_file": "",
+        "interactive": true
+      }
+    }
+  ]
+}
