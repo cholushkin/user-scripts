@@ -19,10 +19,10 @@ REM -------------------------
 
 if /i "%BACKEND%"=="micromamba" (
 
-    if exist "C:\micromamba\micromamba.exe" (
-        set MAMBA_ROOT_PREFIX=C:\micromamba\root
-        C:\micromamba\micromamba.exe run -n %ENV% python %*
-    ) else (
+	where micromamba >nul 2>nul
+	if %errorlevel%==0 (
+		micromamba run -n %ENV% python %*
+	) else (
         echo [ERR] micromamba not found
     )
 
