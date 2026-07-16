@@ -13,6 +13,15 @@ from param import Param
 
 from PIL import Image
 
+# -------------------------
+# SVG SUPPORT DEPENDENCY
+# -------------------------
+try:
+    import cairosvg
+    HAS_CAIROSVG = True
+except ImportError:
+    HAS_CAIROSVG = False
+
 
 # -------------------------
 # DEFAULTS
@@ -38,14 +47,14 @@ DEFAULTS = {
     "overwrite": False,
 }
 
-
 SUPPORTED_FORMATS = (
     ".jpg",
     ".jpeg",
     ".png",
     ".bmp",
     ".tiff",
-    ".webp"
+    ".webp",
+    ".svg"   # Added SVG support
 )
 
 
@@ -89,7 +98,7 @@ class ImageResizeScript(BaseScript):
                     str,
                     DEFAULTS["format"],
                     label="Output format",
-                    description="jpg or webp"
+                    description="jpg or webp (SVGs always save as png)"
                 ),
                 Param("quality", int, DEFAULTS["quality"]),
                 Param("overwrite", bool, DEFAULTS["overwrite"]),
@@ -160,6 +169,40 @@ class ImageResizeScript(BaseScript):
 
     def process_image(self, path, output_dir, ctx):
         try:
+            # -------------------------
+            # SVG SPECIAL HANDLING
+            # -------------------------
+            if path.suffix.lower() == ".svg":
+                if not HAS_CAIROSVG:
+                    self.log_error(f"Cannot process {path}: 'cairosvg' is not installed. Run 'pip install cairosvg'.")
+                    return
+
+                # Force output to PNG for SVGs
+                output_path = output_dir / f"{path.stem}.png"
+
+                if output_path.exists() and not ctx["overwrite"]:
+                    self.log_warn(f"Skip exists: {output_path}")
+                    return
+
+                output_dir.mkdir(parents=True, exist_ok=True)
+
+                w = ctx["width"]
+                h = ctx["height"]
+
+                # Apply explicit dimensions only if provided (ignoring scale)
+                kwargs = {}
+                if w > 0: kwargs["output_width"] = w
+                if h > 0: kwargs["output_height"] = h
+
+                self.log_info(f"{path} -> {output_path} (SVG rasterized to PNG)")
+                
+                # Rasterize perfectly at target dimensions
+                cairosvg.svg2png(url=str(path), write_to=str(output_path), **kwargs)
+                return
+
+            # -------------------------
+            # STANDARD RASTER HANDLING
+            # -------------------------
             img = Image.open(path)
 
             output_format = ctx["format"].lower()
