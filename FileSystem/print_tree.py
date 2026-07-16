@@ -14,9 +14,11 @@ DEFAULTS = {
     "log_file": "Tree.log",
 
     "path": ".",
-    "dirs_only": False,
+    "print_full_list": True,
+    "print_files_content": False,
 
-    "content_patterns": "*.py;*.txt;*.md;*.cmd;*.bat;*.css",
+    "prefix_text_md": "",
+    "content_patterns": "*.py;*.txt;*.md;*.cmd;*.bat;*.css;*.cs;*.asmref;*.asmdef",
     "content_ignore_patterns": "",
     "ignore_patterns": "__pycache__;*.pyc;.git",
 }
@@ -32,17 +34,31 @@ class PrintTreeScript(BaseScript):
                     str,
                     DEFAULTS["path"],
                     label="Root path",
-                    description="Starting location for the tree (file or directory)"
+                    description="Starting location for the script (file or directory)"
                 ),
                 Param(
-                    "dirs_only",
+                    "print_full_list",
                     bool,
-                    DEFAULTS["dirs_only"],
-                    label="Directories only",
-                    description="Show only directories and skip files"
+                    DEFAULTS["print_full_list"],
+                    label="Print full file list",
+                    description="Print the full path of all discovered files"
+                ),
+                Param(
+                    "print_files_content",
+                    bool,
+                    DEFAULTS["print_files_content"],
+                    label="Print files content",
+                    description="Print the isolated content of matched files after the list"
                 ),
             ]),
             ParamGroup("Content", [
+                Param(
+                    "prefix_text_md",
+                    str,
+                    DEFAULTS["prefix_text_md"],
+                    label="Prefix text MD file",
+                    description="Markdown file (relative to active preset/config folder) to prepend raw to output",
+                ),
                 Param(
                     "content_patterns",
                     str,
@@ -71,7 +87,7 @@ class PrintTreeScript(BaseScript):
         return DEFAULTS
 
     def preview(self, ctx):
-        return f"Tree of: {os.path.abspath(ctx['path'])}"
+        return f"Target: {os.path.abspath(ctx['path'])}"
 
     def run(self, ctx):
         extra = getattr(self.context, "extra", {})
@@ -90,8 +106,41 @@ class PrintTreeScript(BaseScript):
                 self.log_error(f"Not a directory: {root}")
                 return
 
-        dirs_only = ctx["dirs_only"]
+        # ---------------------------------------------------------
+        # 1. Prepend Prefix Markdown Text (100% Raw)
+        # ---------------------------------------------------------
+        prefix_file = ctx.get("prefix_text_md")
+        if prefix_file and prefix_file.strip():
+            prefix_file = prefix_file.strip()
 
+            config_dir = extra.get("config_dir")
+            if not config_dir:
+                config_dir = os.path.dirname(os.path.abspath(__file__))
+                try:
+                    from domain_utils import find_project_domain
+                    start_path = extra.get("cwd") or ctx["path"]
+                    _, project_dir = find_project_domain(start_path)
+                    if project_dir and os.path.exists(project_dir):
+                        config_dir = project_dir
+                except ImportError:
+                    pass
+
+            prefix_path = os.path.join(config_dir, prefix_file)
+            
+            if os.path.isfile(prefix_path):
+                try:
+                    with open(prefix_path, "r", encoding="utf-8") as f:
+                        for line in f:
+                            self.log_info(line.rstrip()) # Dump raw content
+                    self.log_info("")  # Blank line separator after raw prefix
+                except Exception as e:
+                    self.log_warn(f"Failed to read prefix file: {prefix_path} ({e})")
+            else:
+                self.log_warn(f"Prefix MD file '{prefix_file}' not found in: {config_dir}")
+
+        # ---------------------------------------------------------
+        # 2. Collect Files and Directories
+        # ---------------------------------------------------------
         def parse_patterns(s):
             return [p.strip() for p in s.split(";") if p.strip()]
 
@@ -102,56 +151,59 @@ class PrintTreeScript(BaseScript):
         def match_any(name, patterns):
             return any(fnmatch.fnmatch(name, p) for p in patterns)
 
-        self.log_info(root)
+        collected_files = []
 
-        def walk(path, level):
+        def collect_entries(path):
             try:
                 entries = sorted(os.listdir(path))
             except Exception as e:
                 self.log_error(f"Failed to access: {path} ({e})")
                 return
 
-            indent = "    " * (level + 1)
-
-            dirs = []
-            files = []
-
             for e in entries:
                 if match_any(e, ignore_patterns):
                     continue
 
-                full = os.path.join(path, e)
+                full_path = os.path.join(path, e)
 
-                if os.path.isdir(full):
-                    dirs.append(e)
+                if os.path.isdir(full_path):
+                    collect_entries(full_path)
                 else:
-                    files.append(e)
+                    collected_files.append(full_path)
 
-            for d in dirs:
-                self.log_info(f"{indent}{d}")
-                walk(os.path.join(path, d), level + 1)
+        collect_entries(root)
 
-            if not dirs_only:
-                for f in files:
-                    self.log_info(f"{indent}{f}")
+        # ---------------------------------------------------------
+        # 3. Print Full File List (if enabled)
+        # ---------------------------------------------------------
+        if ctx["print_full_list"]:
+            self.log_info(f"### FILE LIST ({len(collected_files)} files discovered):")
+            for file_path in collected_files:
+                self.log_info(file_path)
+            self.log_info("")  # Blank line separator
 
-                    if match_any(f, content_patterns) and not match_any(f, content_ignore):
-                        full_path = os.path.join(path, f)
+        # ---------------------------------------------------------
+        # 4. Print Files Content (if enabled)
+        # ---------------------------------------------------------
+        if ctx["print_files_content"]:
+            self.log_info("### FILES CONTENT:")
+            
+            for full_path in collected_files:
+                filename = os.path.basename(full_path)
 
-                        self.log_info(f"{indent}// --- Start File: {full_path} ---")
-
-                        try:
-                            with open(full_path, "r", encoding="utf-8") as file:
-                                for line in file:
-                                    line = line.rstrip()
-                                    if line:
-                                        self.log_info(f"{indent}    {line}")
-                        except Exception as e:
-                            self.log_warn(f"Failed to read file: {full_path} ({e})")
-
-                        self.log_info(f"{indent}// --- End File: {full_path} ---")
-
-        walk(root, 0)
+                # Filter by content include/ignore patterns
+                if match_any(filename, content_patterns) and not match_any(filename, content_ignore):
+                    
+                    # XML / LLM-Friendly Isolation Strings
+                    self.log_info(f'<file path="{full_path}">')
+                    try:
+                        with open(full_path, "r", encoding="utf-8") as file:
+                            for line in file:
+                                self.log_info(line.rstrip())
+                    except Exception as e:
+                        self.log_warn(f"Failed to read file: {full_path} ({e})")
+                    self.log_info("</file>")
+                    self.log_info("") # Spacing between isolated files
 
 
 if __name__ == "__main__":

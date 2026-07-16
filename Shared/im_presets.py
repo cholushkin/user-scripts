@@ -19,14 +19,15 @@ class ImPresets:
 
         self._load()
 
+    def get_config_dir(self) -> str:
+        """Returns the directory where this preset manager stores its config files."""
+        script_path = os.path.abspath(sys.argv[0])
+        return self.target_dir if self.target_dir else os.path.dirname(script_path)
+
     def _get_file(self) -> str:
         script_path = os.path.abspath(sys.argv[0])
         script_name = os.path.splitext(os.path.basename(script_path))[0]
-        
-        # If a target directory (such as a project's .uscript folder) is provided, use it;
-        # otherwise, fall back to the directory containing the script.
-        base_dir = self.target_dir if self.target_dir else os.path.dirname(script_path)
-        return os.path.join(base_dir, f"{script_name}.presets.json")
+        return os.path.join(self.get_config_dir(), f"{script_name}.presets.json")
 
     def _defaults_snapshot(self) -> Dict:
         return {
@@ -106,7 +107,14 @@ class ImPresets:
                     p.value = values[p.name]
 
         self.selected = name
-        self.logger.info(f"[{self.scope_name} PRESET] Applied: {name}")
+        
+        # Ensure context.extra exists and inject the active preset's source directory
+        if not hasattr(self.context, "extra") or self.context.extra is None:
+            self.context.extra = {}
+        self.context.extra["config_dir"] = self.get_config_dir()
+        self.context.extra["preset_scope"] = self.scope_name
+
+        self.logger.info(f"[{self.scope_name} PRESET] Applied: {name} (config_dir: {self.get_config_dir()})")
 
     def save(self, name: str):
         if not name:

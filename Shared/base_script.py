@@ -228,15 +228,15 @@ class BaseScript:
         self._setup_log_file(ctx)
 
         try:
-            self.log_info(f"Script: {self.__class__.__name__}.py")
-            self.log_info("Parameters:")
+            self.log_debug(f"Script: {self.__class__.__name__}.py")
+            self.log_debug("Parameters:")
 
             for k, v in ctx.items():
                 if k == "interactive":
                     continue
-                self.log_info(f"  {k} = {v}")
+                self.log_debug(f"  {k} = {v}")
 
-            self.log_info("Output:")
+            self.log_debug("Output:")
 
             result = self.run(ctx)
 
