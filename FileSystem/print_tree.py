@@ -16,6 +16,7 @@ DEFAULTS = {
     "path": ".",
     "print_full_list": True,
     "print_files_content": False,
+    "log_name_from_dir": False,
 
     "prefix_text_md": "",
     "content_patterns": "*.py;*.txt;*.md;*.cmd;*.bat;*.css;*.cs;*.asmref;*.asmdef",
@@ -49,6 +50,13 @@ class PrintTreeScript(BaseScript):
                     DEFAULTS["print_files_content"],
                     label="Print files content",
                     description="Print the isolated content of matched files after the list"
+                ),
+                Param(
+                    "log_name_from_dir",
+                    bool,
+                    DEFAULTS["log_name_from_dir"],
+                    label="Log name from dir",
+                    description="Override log filename to match the target directory name (e.g., DirName.log)"
                 ),
             ]),
             ParamGroup("Content", [
@@ -89,22 +97,40 @@ class PrintTreeScript(BaseScript):
     def preview(self, ctx):
         return f"Target: {os.path.abspath(ctx['path'])}"
 
-    def run(self, ctx):
+    def _resolve_root_dir(self, ctx):
+        """Helper to resolve and validate the target root directory."""
         extra = getattr(self.context, "extra", {})
-
-        root = os.path.abspath(ctx["path"])
+        root = os.path.abspath(ctx.get("path", "."))
 
         if os.path.isfile(root):
             root = os.path.dirname(root)
 
         if not os.path.isdir(root):
-            if "cwd" in extra:
+            if "cwd" in extra and extra["cwd"]:
                 root = os.path.abspath(extra["cwd"])
                 if os.path.isfile(root):
                     root = os.path.dirname(root)
-            else:
-                self.log_error(f"Not a directory: {root}")
-                return
+        return root
+
+    def _setup_log_file(self, ctx):
+        # Override log filename before BaseScript opens the file stream
+        if ctx.get("log_name_from_dir"):
+            root = self._resolve_root_dir(ctx)
+            dir_name = os.path.basename(root.rstrip(os.sep))
+            if dir_name:
+                new_log_name = f"{dir_name}.log"
+                ctx["log_file"] = new_log_name
+                self._set_param("log_file", new_log_name)
+
+        super()._setup_log_file(ctx)
+
+    def run(self, ctx):
+        extra = getattr(self.context, "extra", {})
+
+        root = self._resolve_root_dir(ctx)
+        if not os.path.isdir(root):
+            self.log_error(f"Not a directory: {root}")
+            return
 
         # ---------------------------------------------------------
         # 1. Prepend Prefix Markdown Text (100% Raw)
@@ -147,6 +173,13 @@ class PrintTreeScript(BaseScript):
         content_patterns = parse_patterns(ctx["content_patterns"])
         content_ignore = parse_patterns(ctx["content_ignore_patterns"])
         ignore_patterns = parse_patterns(ctx["ignore_patterns"])
+
+        # Dynamically inject the active log file into the ignore list
+        active_log = ctx.get("log_file")
+        if active_log:
+            log_filename = os.path.basename(active_log.strip())
+            if log_filename and log_filename not in ignore_patterns:
+                ignore_patterns.append(log_filename)
 
         def match_any(name, patterns):
             return any(fnmatch.fnmatch(name, p) for p in patterns)
