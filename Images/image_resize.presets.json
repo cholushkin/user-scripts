@@ -16,10 +16,10 @@
         "keep_aspect": true,
         "output_dir": ".",
         "format": "jpg",
-        "quality": 60,
+        "quality": 80,
         "overwrite": false,
         "log_level": 20,
-        "log_file": null,
+        "log_file": "",
         "interactive": true
       }
     },
