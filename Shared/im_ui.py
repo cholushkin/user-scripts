@@ -1,7 +1,7 @@
 # Shared/im_ui.py
 
 import os
-from typing import Optional
+from typing import Optional, List
 from dearpygui import dearpygui as dpg
 
 
@@ -12,15 +12,13 @@ class ImUI:
         logger,
         presets,
         binder,
-        project_presets: Optional[object] = None,
-        project_name: Optional[str] = None,
+        local_preset_managers: Optional[List[object]] = None,
         title: str = "Interactive",
     ):
         self.context = context
         self.logger = logger
         self.presets = presets  # Primary (Global) presets manager
-        self.project_presets = project_presets  # Optional Project-domain presets manager
-        self.project_name = project_name
+        self.local_preset_managers = local_preset_managers or []
         self.binder = binder
 
         self.title = title
@@ -38,9 +36,16 @@ class ImUI:
 
         self.logger.attach_ui(self._log_sink)
 
-        # Apply initial preset and push synced values to UI
+        # Apply global preset first
         if self.presets.selected:
             self.presets.apply(self.presets.selected)
+            
+        # Cascade through dynamic local presets (Top to Bottom)
+        for mgr in self.local_preset_managers:
+            if mgr.selected:
+                mgr.apply(mgr.selected)
+                
+        # Push synced values to UI
         self.binder.push_to_ui()
 
     # -------------------------
@@ -75,21 +80,24 @@ class ImUI:
                 self.binder.render()
 
             # --- GLOBAL PRESETS ---
-            dpg.add_text("### PRESETS", color=(255, 255, 0))
+            dpg.add_text("### PRESETS [Global]", color=(255, 255, 0))
             with dpg.collapsing_header(
-                tag="presets_header",
+                tag="presets_header_global",
                 default_open=self.presets.ui_state.get("presets_open", True),
             ):
                 self._render_presets(self.presets, prefix="global")
 
-            # --- PROJECT PRESETS ---
-            if self.project_presets and self.project_name:
-                dpg.add_text(f"### PRESETS [{self.project_name}]", color=(0, 255, 200))
+            # --- DYNAMIC LOCAL PRESETS ---
+            for i, mgr in enumerate(self.local_preset_managers):
+                # Fallback in case 'scope_name' doesn't exist on the object
+                scope = getattr(mgr, "scope_name", f"local_{i}")
+                
+                dpg.add_text(f"### PRESETS [{scope}]", color=(0, 255, 200))
                 with dpg.collapsing_header(
-                    tag="project_presets_header",
-                    default_open=self.project_presets.ui_state.get("presets_open", True),
+                    tag=f"presets_header_{scope}",
+                    default_open=mgr.ui_state.get("presets_open", True),
                 ):
-                    self._render_presets(self.project_presets, prefix="project")
+                    self._render_presets(mgr, prefix=scope)
 
             dpg.add_separator()
 
@@ -155,13 +163,19 @@ class ImUI:
                 dpg.add_button(label="Delete", callback=lambda: self._open_delete_popup(presets_mgr, prefix))
 
     def _on_preset_click(self, presets_mgr, prefix: str, name: str):
-        # Deselect opposite scope to maintain a single active highlight across panels
-        other_mgr = self.project_presets if presets_mgr == self.presets else self.presets
-        if other_mgr:
-            other_mgr.selected = None
-            other_prefix = "project" if prefix == "global" else "global"
-            if dpg.does_item_exist(f"presets_container_{other_prefix}"):
-                self._rebuild_presets(other_mgr, other_prefix)
+        # Build a list of all managers and their prefixes
+        all_mgrs = [(self.presets, "global")] + [
+            (m, getattr(m, "scope_name", f"local_{i}")) 
+            for i, m in enumerate(self.local_preset_managers)
+        ]
+        
+        # Deselect all OTHER scopes to maintain a single active highlight across all panels
+        for mgr, mgr_prefix in all_mgrs:
+            if mgr != presets_mgr:
+                if mgr.selected is not None:
+                    mgr.selected = None
+                    if dpg.does_item_exist(f"presets_container_{mgr_prefix}"):
+                        self._rebuild_presets(mgr, mgr_prefix)
 
         presets_mgr.apply(name)
         self.binder.push_to_ui()
@@ -273,10 +287,11 @@ class ImUI:
         return self.context if self.result else None
 
     def _save_state(self):
+        # Core state utilizing global presets dictionary
         for k, tag in [
             ("help_open", "help_header"),
             ("params_open", "params_header"),
-            ("presets_open", "presets_header"),
+            ("presets_open", "presets_header_global"),
         ]:
             try:
                 self.presets.ui_state[k] = dpg.get_value(tag)
@@ -285,10 +300,13 @@ class ImUI:
 
         self.presets._save()
 
-        # Persist project-level header state if project domain is active
-        if self.project_presets:
+        # Dynamically persist local header states
+        for i, mgr in enumerate(self.local_preset_managers):
+            scope = getattr(mgr, "scope_name", f"local_{i}")
+            header_tag = f"presets_header_{scope}"
             try:
-                self.project_presets.ui_state["presets_open"] = dpg.get_value("project_presets_header")
-                self.project_presets._save()
+                if dpg.does_item_exist(header_tag):
+                    mgr.ui_state["presets_open"] = dpg.get_value(header_tag)
+                    mgr._save()
             except Exception:
                 pass

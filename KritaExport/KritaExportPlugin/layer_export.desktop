@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Service
+ServiceTypes=Krita/PythonPlugin
+X-KDE-Library=layer_export
+X-Python-2-Compatible=false
+Name=Layer Export
+Comment=Exports layered scene data for external pipelines

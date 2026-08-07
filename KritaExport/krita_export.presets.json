@@ -1,0 +1,21 @@
+{
+  "ui": {
+    "help_open": true,
+    "params_open": true,
+    "presets_open": true
+  },
+  "presets": [
+    {
+      "name": "Default",
+      "values": {
+        "krita_exe": "C:\\Program Files\\Krita (x64)\\bin\\krita.exe",
+        "output_dir": "",
+        "objects": "",
+        "force_update": false,
+        "log_level": 20,
+        "log_file": null,
+        "interactive": true
+      }
+    }
+  ]
+}

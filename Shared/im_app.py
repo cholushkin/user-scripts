@@ -1,4 +1,7 @@
-# Shared/im_app.py
+# todo:
+# - consider abstracting the domain discovery loop into its own factory/builder class if more resolution priorities are added
+# ideas:
+# - cache discovered uscript_dirs in a temporary dotfile to speed up repeated CLI executions in huge project trees
 
 import os
 from im_logger import ImLogger
@@ -17,7 +20,7 @@ class ImApp:
         self.logger = ImLogger()
         self.binder = ImParamBinder(context, self.logger)
 
-        # 2. Discover Project Domain (.uscript or .uscripts)
+        # 2. Discover Project Domain (.uscript hierarchy & config.json)
         # We check multiple potential sources for a path in order of relevance:
         extra = getattr(context, "extra", {})
         ctx_dict = context.to_dict()
@@ -29,12 +32,17 @@ class ImApp:
             os.getcwd()                   # Fallback: Current terminal execution directory
         ]
 
-        project_name, uscript_dir = None, None
+        project_info = {}
         for path_hint in candidate_paths:
             if path_hint:
-                project_name, uscript_dir = find_project_domain(str(path_hint))
-                if uscript_dir:
-                    break  # Stop searching as soon as we find a valid domain!
+                info = find_project_domain(str(path_hint))
+                if info and info.get("uscript_dirs"):
+                    project_info = info
+                    self.logger.info(f"[DOMAIN] Discovery initialized from path hint: {path_hint}")
+                    break
+        
+        project_name = project_info.get("project_name")
+        uscript_dirs = project_info.get("uscript_dirs", [])
 
         # 3. Initialize Global Presets (Baseline)
         self.presets = ImPresets(
@@ -44,18 +52,32 @@ class ImApp:
             scope_name="Global"
         )
 
-        # 4. Initialize Project Presets (if domain was discovered)
-        self.project_presets = None
-        if uscript_dir:
-            self.logger.info(f"[DOMAIN] Discovered project '{project_name}' at: {uscript_dir}")
-            self.project_presets = ImPresets(
-                context=context,
-                logger=self.logger,
-                target_dir=uscript_dir,
-                scope_name=project_name
-            )
+        # 4. Initialize Hierarchical Local Presets
+        self.local_preset_managers = []
+        
+        if uscript_dirs:
+            if project_info.get("root_path"):
+                self.logger.info(f"[DOMAIN] Discovered project '{project_name}' (Root: {project_info.get('root_path')})")
+            if project_info.get("asset_folder"):
+                self.logger.info(f"[DOMAIN] Project Config mapped Unity Asset Folder: '{project_info.get('asset_folder')}'")
+
+            # Reverse the list so the UI renders Top-Down (Root -> Subfolder -> Closest)
+            for u_dir in reversed(uscript_dirs):
+                # Name the scope after the parent folder of .uscript (e.g., "ArtSources", "TargetOne")
+                parent_folder_name = os.path.basename(os.path.dirname(u_dir))
+                scope_name = f"[{parent_folder_name}]" if parent_folder_name else "[Local]"
+                
+                self.logger.info(f"[DOMAIN] Binding Local Presets for {scope_name} at: {u_dir}")
+                
+                manager = ImPresets(
+                    context=context,
+                    logger=self.logger,
+                    target_dir=u_dir,
+                    scope_name=scope_name
+                )
+                self.local_preset_managers.append(manager)
         else:
-            self.logger.info("[DOMAIN] No project domain (.uscript) found in execution path.")
+            self.logger.info("[DOMAIN] Standalone execution (No .uscript hierarchy found).")
 
         # 5. Build and attach UI
         ui_title = f"{title} - {project_name}" if project_name else title
@@ -64,8 +86,7 @@ class ImApp:
             logger=self.logger,
             presets=self.presets,
             binder=self.binder,
-            project_presets=self.project_presets,
-            project_name=project_name,
+            local_preset_managers=self.local_preset_managers, 
             title=ui_title
         )
 
@@ -77,9 +98,6 @@ class ImApp:
             return self.ui.run()
 
         except Exception as e:
-            # Critical fallback: log crash before bubbling up
-            self.logger.error(f"[CRASH] {e}")
-            raise
-
-        finally:
-            self.logger.close()
+            # Critical fallback: log crash before exiting
+            self.logger.error(f"UI Crash: {e}")
+            return None
