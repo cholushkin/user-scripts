@@ -1,317 +1,187 @@
 import os
 import json
 import re
-
 from PyQt5.QtGui import QImage
 
-
+# ============================================================
+# Logging Delegate
+# ============================================================
 _logger = None
-
-
-# ============================================================
-# Logging
-# ============================================================
 
 def set_logger(logger_func):
     global _logger
     _logger = logger_func
 
-
 def log(msg):
     if _logger:
         _logger(msg)
-
+    else:
+        print(f"[ExportCore] {msg}")
 
 # ============================================================
-# Name Utilities
+# Name Utilities & Parsing
 # ============================================================
-
 def sanitize_name(name):
     name = re.sub(r'\s*\[.*?\]', '', name)  # remove directive blocks
     name = re.sub(r'[^a-zA-Z0-9_]', '_', name)
     name = re.sub(r'_+', '_', name)
     return name.strip("_")
 
-
 def clean_layer_name(name):
     return re.sub(r'\s*\[.*?\]', '', name).strip()
-
-
-# ============================================================
-# Directive Parsing
-# ============================================================
 
 def parse_layer_directives(name):
     matches = re.findall(r'\[(.*?)\]', name)
     if not matches:
         return None
 
-    settings = {
-        "export": False,
-        "merge": False,
-        "crop": False,
-        "margins": (0, 0, 0, 0)
-    }
+    settings = {"export": False, "merge": False, "crop": False, "margins": (0, 0, 0, 0)}
 
-    for block in matches:
-        token = block.strip()
-
-        if token == "e":
-            settings["export"] = True
-
-        elif token == "m":
-            settings["merge"] = True
-
-        elif token.startswith("c"):
-            settings["crop"] = True
-
-            if ":" in token:
+    for match in matches:
+        m = match.lower()
+        if m == 'e': settings['export'] = True
+        elif m == 'm': settings['merge'] = True
+        elif m.startswith('c'):
+            settings['crop'] = True
+            if ':' in m:
                 try:
-                    _, value = token.split(":", 1)
-                    parts = value.split(",")
+                    parts = [int(p.strip()) for p in m.split(':')[1].split(',')]
                     if len(parts) == 4:
-                        settings["margins"] = tuple(int(p.strip()) for p in parts)
-                except Exception:
-                    log(f"Failed parsing crop margins in {name}")
-
-    if not settings["export"]:
-        return None
-
+                        settings['margins'] = tuple(parts)
+                except ValueError:
+                    log(f"Warning: Invalid crop margins in layer '{name}'")
+                    
     return settings
 
-
 # ============================================================
-# Node Utilities
+# Krita Tree Navigation & Export
 # ============================================================
-
 def is_group(node):
-    return node.type() == "grouplayer"
+    return node.type() == 'grouplayer'
 
+def find_node_by_name(root, target_name):
+    if clean_layer_name(root.name()) == target_name:
+        return root
+    for child in root.childNodes():
+        found = find_node_by_name(child, target_name)
+        if found: return found
+    return None
 
-def is_exportable(node):
-    return node.type() in ("paintlayer", "grouplayer")
-
-
-# ============================================================
-# Rendering
-# ============================================================
-
-def render_node_to_image(node, doc):
-    width = doc.width()
-    height = doc.height()
-
-    if node.type() == "paintlayer":
-        pixel_data = node.pixelData(0, 0, width, height)
-    else:
-        pixel_data = node.projectionPixelData(0, 0, width, height)
-
-    image = QImage(pixel_data, width, height, QImage.Format_ARGB32)
-    return image.copy()
-
-
-# ============================================================
-# Cropping
-# ============================================================
-
-def compute_auto_crop(image):
-    rect = image.rect()
-
-    min_x = rect.width()
-    min_y = rect.height()
-    max_x = -1
-    max_y = -1
-
-    for y in range(rect.height()):
-        for x in range(rect.width()):
-            if image.pixelColor(x, y).alpha() > 0:
-                if x < min_x: min_x = x
-                if y < min_y: min_y = y
-                if x > max_x: max_x = x
-                if y > max_y: max_y = y
-
-    if max_x == -1:
-        return None
-
-    return (min_x, min_y, max_x - min_x + 1, max_y - min_y + 1)
-
-
-def apply_margins(x, y, w, h, margins, max_w, max_h):
-    left, top, right, bottom = margins
-
-    x = max(0, x - left)
-    y = max(0, y - top)
-
-    w = w + left + right
-    h = h + top + bottom
-
-    if x + w > max_w:
-        w = max_w - x
-
-    if y + h > max_h:
-        h = max_h - y
-
-    return x, y, w, h
-
-
-# ============================================================
-# Image Export
-# ============================================================
-
-def export_image_node(node, doc, output_dir, filename, settings):
-    image = render_node_to_image(node, doc)
+def export_image_node(node, doc, output_dir, file_name, settings):
+    file_path = os.path.join(output_dir, file_name)
 
     if settings["crop"]:
-        crop_rect = compute_auto_crop(image)
-        if crop_rect is None:
-            return None
-
-        x, y, w, h = crop_rect
-        x, y, w, h = apply_margins(
-            x, y, w, h,
-            settings["margins"],
-            image.width(),
-            image.height()
-        )
-
-        image = image.copy(x, y, w, h)
+        bounds = node.bounds()
+        margins = settings.get("margins", (0, 0, 0, 0))
+        left, top, right, bottom = margins
+        x = max(0, bounds.x() - left)
+        y = max(0, bounds.y() - top)
+        width = min(doc.width() - x, bounds.width() + left + right)
+        height = min(doc.height() - y, bounds.height() + top + bottom)
     else:
-        x, y = 0, 0
-        w = image.width()
-        h = image.height()
+        x, y, width, height = 0, 0, doc.width(), doc.height()
 
-    image_path = os.path.join(output_dir, filename)
-    image.save(image_path, "PNG")
+    if width <= 0 or height <= 0:
+        log(f"Skipping {file_name}: Invalid dimensions ({width}x{height})")
+        return None
 
-    return {
-        "x": x,
-        "y": y,
-        "width": w,
-        "height": h
-    }
+    img_data = node.projectionPixelData(x, y, width, height)
+    qimg = QImage(img_data, width, height, QImage.Format_ARGB32)
 
+    os.makedirs(output_dir, exist_ok=True)
+    qimg.save(file_path, "PNG")
+    log(f"Exported PNG: {file_name}")
 
-# ============================================================
-# Core Export
-# ============================================================
+    return {"x": x, "y": y, "width": width, "height": height}
 
-def export_document(document, output_directory, objects=None):
-    """
-    Entry point for exporting a Krita document.
-
-    Parameters:
-        document: Krita document instance
-        output_directory: target directory for export
-        objects: optional list of object names to export
-    """
-
-    log("Starting export_document")
-
-    if not os.path.exists(output_directory):
-        os.makedirs(output_directory)
-
-    doc_name_clean = sanitize_name(document.name())
-
-    root_json = {
-        "version": 1,
-        "format": "layeredimage",
-        "document": {
-            "width": document.width(),
-            "height": document.height()
-        },
-        "root": {
-            "name": document.name(),
-            "type": "group",
-            "children": []
-        }
-    }
-
-    root_node = document.rootNode()
-
-    for node in reversed(root_node.childNodes()):
-        try:
-            process_node(
-                node,
-                document,
-                output_directory,
-                root_json["root"],
-                doc_name_clean,
-                objects
-            )
-        except Exception as e:
-            log(f"Error processing node {node.name()}: {e}")
-
-    json_path = os.path.join(output_directory, f"{doc_name_clean}.layeredimage")
-
-    with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(root_json, f, indent=4)
-
-    log("Export completed")
-
-
-def process_node(node, doc, output_dir, parent_json, parent_path, objects=None):
-    if not is_exportable(node):
-        return
-
+def process_node(node, doc, output_dir, parent_json, parent_path):
     clean_name = clean_layer_name(node.name())
-
-    # Object filtering (only at root level)
-    if objects:
-        if parent_json["type"] == "group" and parent_path.count("_") == 0:
-            if clean_name not in objects:
-                return
-
     settings = parse_layer_directives(node.name())
-
     node_name_clean = sanitize_name(node.name())
     current_path = f"{parent_path}_{node_name_clean}"
 
     if settings:
-        if is_group(node) and not settings["merge"]:
+        if is_group(node) and not settings.get("merge"):
             group_json = {
                 "name": clean_name,
                 "type": "group",
                 "children": []
             }
-
             parent_json["children"].append(group_json)
 
             for child in reversed(node.childNodes()):
-                process_node(
-                    child,
-                    doc,
-                    output_dir,
-                    group_json,
-                    current_path,
-                    objects
-                )
-
+                process_node(child, doc, output_dir, group_json, current_path)
         else:
-            bounds = export_image_node(
-                node,
-                doc,
-                output_dir,
-                f"{current_path}.png",
-                settings
-            )
-
-            if bounds is None:
-                return
+            bounds = export_image_node(node, doc, output_dir, f"{current_path}.png", settings)
+            if bounds is None: return
 
             parent_json["children"].append({
                 "name": clean_name,
                 "type": "image",
                 "bounds": bounds,
-                "image": f"{current_path}.png"
+                "imagePath": f"{current_path}.png"
             })
-
     else:
-        # traverse children to find exportable descendants
         for child in reversed(node.childNodes()):
-            process_node(
-                child,
-                doc,
-                output_dir,
-                parent_json,
-                parent_path,
-                objects
-            )
+            process_node(child, doc, output_dir, parent_json, parent_path)
+
+# ============================================================
+# Main Entry
+# ============================================================
+def export_document(doc, out_override, json_path, root_path, assets_path, objects_raw):
+    log(f"Starting export for document: {doc.name()}")
+
+    targets = []
+    
+    if json_path and os.path.exists(json_path):
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                targets = data.get("export_parameters", {}).get("objects", [])
+        except Exception as e:
+            log(f"Failed to parse JSON: {e}")
+
+    if not targets:
+        objs = [x.strip() for x in objects_raw.split(",")] if objects_raw else []
+        if objs:
+            targets = [{"layer": obj, "name": sanitize_name(obj), "subfolder": ""} for obj in objs]
+        else:
+            targets = [{"layer": doc.rootNode().name(), "name": sanitize_name(doc.rootNode().name()), "subfolder": ""}]
+
+    for target in targets:
+        layer_name = target.get("layer", "")
+        subfolder = target.get("subfolder", "")
+        export_name = target.get("name", sanitize_name(layer_name))
+
+        if out_override:
+            target_dir = os.path.join(out_override, subfolder)
+        elif root_path and assets_path:
+            target_dir = os.path.join(root_path, assets_path, subfolder)
+        else:
+            target_dir = os.path.join(os.path.dirname(doc.fileName()), subfolder)
+
+        os.makedirs(target_dir, exist_ok=True)
+        log(f"Routing '{layer_name}' -> {target_dir}")
+
+        node = find_node_by_name(doc.rootNode(), layer_name)
+        if not node:
+            log(f"WARN: Could not find target layer '{layer_name}' in document.")
+            continue
+
+        manifest = {
+            "version": 1,
+            "name": export_name,
+            "document": {
+                "width": doc.width(),
+                "height": doc.height()
+            },
+            "children": []
+        }
+
+        process_node(node, doc, target_dir, manifest, export_name)
+
+        manifest_path = os.path.join(target_dir, f"{export_name}.layeredimage")
+        with open(manifest_path, 'w', encoding='utf-8') as mf:
+            json.dump(manifest, mf, indent=4)
+            
+        log(f"Saved manifest: {export_name}.layeredimage")
