@@ -1,8 +1,16 @@
+"""
+TODO / Ideas:
+- Add multiprocessing/threading support for batch-processing large directories.
+- Implement an option to preserve or strip EXIF metadata for JPEGs.
+- Add dry-run mode to output the planned conversions without writing to disk.
+- Support AVIF output format for better modern web compression.
+"""
+
 import sys
 import os
 from pathlib import Path
 
-# --- match your Shared import pattern ---
+# Ensure the 'Shared' framework module is importable
 sys.path.insert(0, os.path.abspath(
     os.path.join(os.path.dirname(__file__), "../Shared")
 ))
@@ -13,9 +21,7 @@ from param import Param
 
 from PIL import Image
 
-# -------------------------
-# SVG SUPPORT DEPENDENCY
-# -------------------------
+# Optional dependency for SVG rasterization
 try:
     import cairosvg
     HAS_CAIROSVG = True
@@ -23,29 +29,22 @@ except ImportError:
     HAS_CAIROSVG = False
 
 
-# -------------------------
-# DEFAULTS
-# -------------------------
 DEFAULTS = {
     "log_level": 20,
     "log_file": None,
-
-    # input
-    "paths": "",   # semicolon-separated
+    "paths": "",
     "recursive": False,
-
-    # resize
     "scale": 0.5,
     "width": 0,
     "height": 0,
     "keep_aspect": True,
-
-    # output
     "output_dir": ".",
-    "format": "jpg",   # jpg | webp
+    "format": "jpg",
     "quality": 60,
     "overwrite": False,
 }
+
+SUPPORTED_OUTPUT_FORMATS = ("jpg", "webp", "png")
 
 SUPPORTED_FORMATS = (
     ".jpg",
@@ -54,16 +53,11 @@ SUPPORTED_FORMATS = (
     ".bmp",
     ".tiff",
     ".webp",
-    ".svg"   # Added SVG support
+    ".svg"
 )
 
 
-# -------------------------
-# SCRIPT
-# -------------------------
 class ImageResizeScript(BaseScript):
-
-    # --- framework hooks ---
 
     def define_groups(self):
         return [
@@ -98,7 +92,7 @@ class ImageResizeScript(BaseScript):
                     str,
                     DEFAULTS["format"],
                     label="Output format",
-                    description="jpg or webp (SVGs always save as png)"
+                    description="jpg, webp, or png (SVGs always save as png)"
                 ),
                 Param("quality", int, DEFAULTS["quality"]),
                 Param("overwrite", bool, DEFAULTS["overwrite"]),
@@ -109,44 +103,27 @@ class ImageResizeScript(BaseScript):
         return DEFAULTS
 
     def preview(self, ctx):
-        return (
-            f"Resize images → {ctx['output_dir']} "
-            f"({ctx['format']})"
-        )
-
-    # -------------------------
-    # CORE LOGIC
-    # -------------------------
+        return f"Resize images → {ctx['output_dir']} ({ctx['format']})"
 
     def parse_paths(self, paths_str):
         return [p.strip() for p in paths_str.split(";") if p.strip()]
 
     def collect_images(self, paths, recursive):
         files = []
-
         for path in paths:
             p = Path(path)
-
             if p.is_file() and p.suffix.lower() in SUPPORTED_FORMATS:
                 files.append(p)
-
             elif p.is_dir():
-                if recursive:
-                    files.extend(
-                        f for f in p.rglob("*")
-                        if f.suffix.lower() in SUPPORTED_FORMATS
-                    )
-                else:
-                    files.extend(
-                        f for f in p.glob("*")
-                        if f.suffix.lower() in SUPPORTED_FORMATS
-                    )
-
+                glob_pattern = "*.*" if not recursive else "**/*.*"
+                files.extend(
+                    f for f in p.glob(glob_pattern)
+                    if f.is_file() and f.suffix.lower() in SUPPORTED_FORMATS
+                )
         return files
 
     def resize_image(self, img, ctx):
         ow, oh = img.size
-
         width = ctx["width"]
         height = ctx["height"]
         scale = ctx["scale"]
@@ -157,27 +134,18 @@ class ImageResizeScript(BaseScript):
                 img.thumbnail((width or ow, height or oh))
                 return img
             else:
-                return img.resize(
-                    (width or ow, height or oh),
-                    Image.LANCZOS
-                )
+                return img.resize((width or ow, height or oh), Image.LANCZOS)
 
-        return img.resize(
-            (int(ow * scale), int(oh * scale)),
-            Image.LANCZOS
-        )
+        return img.resize((int(ow * scale), int(oh * scale)), Image.LANCZOS)
 
     def process_image(self, path, output_dir, ctx):
         try:
-            # -------------------------
-            # SVG SPECIAL HANDLING
-            # -------------------------
+            # SVGs require specialized rasterization via cairosvg
             if path.suffix.lower() == ".svg":
                 if not HAS_CAIROSVG:
                     self.log_error(f"Cannot process {path}: 'cairosvg' is not installed. Run 'pip install cairosvg'.")
                     return
 
-                # Force output to PNG for SVGs
                 output_path = output_dir / f"{path.stem}.png"
 
                 if output_path.exists() and not ctx["overwrite"]:
@@ -188,105 +156,64 @@ class ImageResizeScript(BaseScript):
 
                 w = ctx["width"]
                 h = ctx["height"]
-
-                # Apply explicit dimensions only if provided (ignoring scale)
                 kwargs = {}
+                
+                # Apply explicit dimensions if provided, bypassing scale for exact rasterization
                 if w > 0: kwargs["output_width"] = w
                 if h > 0: kwargs["output_height"] = h
 
                 self.log_info(f"{path} -> {output_path} (SVG rasterized to PNG)")
-                
-                # Rasterize perfectly at target dimensions
                 cairosvg.svg2png(url=str(path), write_to=str(output_path), **kwargs)
                 return
 
-            # -------------------------
-            # STANDARD RASTER HANDLING
-            # -------------------------
             img = Image.open(path)
-
             output_format = ctx["format"].lower()
 
-            if output_format not in ("jpg", "webp"):
-                self.log_error(
-                    f"Unsupported output format: {output_format}"
-                )
+            if output_format not in SUPPORTED_OUTPUT_FORMATS:
+                self.log_error(f"Unsupported output format: {output_format}")
                 return
 
-            # JPEG does not support alpha
-            if output_format == "jpg":
-                if img.mode in ("RGBA", "P"):
-                    img = img.convert("RGB")
-
-            # palette -> RGBA for WEBP transparency
-            elif output_format == "webp":
-                if img.mode == "P":
-                    img = img.convert("RGBA")
+            # Format-specific color mode coercions
+            if output_format == "jpg" and img.mode in ("RGBA", "P"):
+                img = img.convert("RGB")
+            elif output_format == "webp" and img.mode == "P":
+                img = img.convert("RGBA")
 
             img = self.resize_image(img, ctx)
-
-            output_path = output_dir / (
-                f"{path.stem}.{output_format}"
-            )
+            output_path = output_dir / f"{path.stem}.{output_format}"
 
             if output_path.exists() and not ctx["overwrite"]:
                 self.log_warn(f"Skip exists: {output_path}")
                 return
 
             output_dir.mkdir(parents=True, exist_ok=True)
-
             self.log_info(f"{path} -> {output_path}")
 
-            # -------------------------
-            # SAVE JPG
-            # -------------------------
             if output_format == "jpg":
-                img.save(
-                    output_path,
-                    "JPEG",
-                    quality=ctx["quality"],
-                    optimize=True,
-                    progressive=True
-                )
-
-            # -------------------------
-            # SAVE WEBP
-            # -------------------------
+                img.save(output_path, "JPEG", quality=ctx["quality"], optimize=True, progressive=True)
             elif output_format == "webp":
-                img.save(
-                    output_path,
-                    "WEBP",
-                    quality=ctx["quality"],
-                    optimize=True
-                )
+                img.save(output_path, "WEBP", quality=ctx["quality"], optimize=True)
+            elif output_format == "png":
+                img.save(output_path, "PNG", optimize=True)
 
         except Exception as e:
             self.log_error(f"Error processing {path}: {e}")
 
-    # -------------------------
-    # RUN
-    # -------------------------
     def run(self, ctx):
         extra = getattr(self.context, "extra", {})
-
         paths = []
 
-        # 1. Double Commander selection (PRIMARY)
+        # 1. Prioritize reading paths from Double Commander temporary selection files
         selected_file = extra.get("selected")
-
         if selected_file and Path(selected_file).exists():
             with open(selected_file, "r", encoding="utf-8") as f:
-                paths.extend(
-                    line.strip()
-                    for line in f
-                    if line.strip()
-                )
+                paths.extend(line.strip() for line in f if line.strip())
 
-        # 2. Manual / CLI paths
+        # 2. Fallback to CLI arguments
         if ctx["paths"]:
             paths.extend(self.parse_paths(ctx["paths"]))
 
-        # 3. Fallback (drag-drop / cwd)
+        # 3. Fallback to current working directory
         if not paths and "cwd" in extra:
             paths = [extra["cwd"]]
 
@@ -294,10 +221,7 @@ class ImageResizeScript(BaseScript):
             self.log_error("No input paths provided")
             return
 
-        images = self.collect_images(
-            paths,
-            ctx["recursive"]
-        )
+        images = self.collect_images(paths, ctx["recursive"])
 
         if not images:
             self.log_warn("No images found")
@@ -306,19 +230,10 @@ class ImageResizeScript(BaseScript):
         output_dir = Path(ctx["output_dir"])
 
         for img_path in images:
-            self.process_image(
-                img_path,
-                output_dir,
-                ctx
-            )
+            self.process_image(img_path, output_dir, ctx)
 
-        self.log_info(
-            f"Done. Processed {len(images)} images."
-        )
+        self.log_info(f"Done. Processed {len(images)} images.")
 
 
-# -------------------------
-# ENTRY POINT
-# -------------------------
 if __name__ == "__main__":
     ImageResizeScript().execute()
