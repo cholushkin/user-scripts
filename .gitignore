@@ -10,3 +10,16 @@
 /Modules/KritaExport/KritaExportPlugin/__pycache__
 /Modules/KritaExport/__pycache__
 /Modules/KritaExport/*.log
+/Modules/BackupUtils/__pycache__
+/Modules/BackupUtils/*.presets.json
+/Modules/BackupUtils/*.im_mode.log
+/Modules/GitUtils/__pycache__
+/Modules/GitUtils/*.presets.json
+/Modules/GitUtils/*.im_mode.log
+/Modules/Blender/__pycache__
+/Modules/Blender/*.presets.json
+/Modules/Blender/*.im_mode.log
+/Modules/Udio/__pycache__
+/Modules/Udio/Effects/__pycache__
+/Modules/Udio/*.presets.json
+/Modules/Udio/*.im_mode.log

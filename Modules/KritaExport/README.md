@@ -70,12 +70,25 @@ environment-variable-driven auto-export mode instead of custom CLI flags:
 3. If set, it waits for the document to finish loading, exports JSON + PNG, then quits
    Krita automatically.
 
-Export rules (layer metadata driven): only layers tagged `export: true` are processed;
-`merge: true` bakes a group to a single image; `crop: "auto"` crops to non-transparent
-bounds. See `References~/Core/KritaExport/KritaExport_README.md` in this repo for the
-full design/architecture documentation (JSON schema, metadata format, limitations).
+## Design notes
+
+- **Export rules** (layer metadata driven): only layers tagged `export: true` are
+  processed; a parent tagged `export: false` skips its whole subtree. Visibility does
+  **not** gate export. `merge: true` bakes a group to a single image; `merge: false`
+  preserves the hierarchy. `crop: "auto"` crops each exported image to its
+  non-transparent bounds; `crop: "none"` keeps the full document bounds. Metadata is
+  stored per-layer under a `layer_export` property, e.g. `{"export": true, "crop": "auto", "merge": false}`.
+- **Output shape**: a synthetic root node wraps the hierarchy; images are flattened into
+  a single output directory, named by joining the full hierarchy path with underscores
+  (`Root_Group_Layer.png`). There are no stable per-layer IDs — every export is a full
+  rebuild, not an incremental update.
+- **Engine-agnostic**: the plugin only exports structure + baked visuals (masks,
+  filters, adjustment layers, blend modes, clone layers, opacity are all baked in).
+  Gameplay semantics (colliders, anchors, tags) are the importing engine's
+  responsibility, not this tool's.
 
 ## Limitations
 
 - Krita's GUI briefly flashes open during each export — it is not truly headless.
-- No incremental export: every run is a full rebuild of the document's export output.
+- No incremental export: every run is a full rebuild of the document's export output,
+  and there are no stable cross-references between runs.

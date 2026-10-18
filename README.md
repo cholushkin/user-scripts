@@ -48,6 +48,10 @@ Every tool lives under `Modules/<ModuleName>/`, each with its own usage manual
 | [`Modules/KritaExport`](Modules/KritaExport/README.md) | — | Batch-exports layered `.kra` files to JSON + baked PNGs via a bundled Krita plugin. |
 | [`Modules/PhotoshopExport`](Modules/PhotoshopExport/README.md) | — | Planned — mirrors `KritaExport` for Photoshop documents. Not implemented yet. |
 | [`Modules/ConnectDisks`](Modules/ConnectDisks/README.md) | — | Plain `.cmd` script that `subst`-maps OMV NAS shares to local drive letters. |
+| [`Modules/Udio`](Modules/Udio/README.md) | `udio-add` / `udio-mix` / `udio-export` / `udio-analyze` | Audio-stem mixing/export pipeline: ingest raw stems, mix with effects, export to Unity, analyze the track library. |
+| [`Modules/GitUtils`](Modules/GitUtils/README.md) | `gitutils` | Git submodule management (force-update to latest, add/remove) plus a human-readable repo status report (submodules, LFS, hooks, options). |
+| [`Modules/BackupUtils`](Modules/BackupUtils/README.md) | `backup` | Creates a ZIP backup of selected project folders with glob exclusions. |
+| [`Modules/Blender`](Modules/Blender/README.md) | `blenderfbx` | Batch-exports objects (with hierarchy) from a `.blend` file to FBX, with Unity axis conversion. |
 
 ---
 
