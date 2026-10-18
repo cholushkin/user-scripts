@@ -14,6 +14,7 @@ class ImUI:
         binder,
         local_preset_managers: Optional[List[object]] = None,
         title: str = "Interactive",
+        readme_path: Optional[str] = None,
     ):
         self.context = context
         self.logger = logger
@@ -22,6 +23,7 @@ class ImUI:
         self.binder = binder
 
         self.title = title
+        self.readme_path = readme_path
         self.result = None
         self.log_lines = []
 
@@ -60,7 +62,9 @@ class ImUI:
                 tag="help_header",
                 default_open=self.presets.ui_state.get("help_open", True),
             ):
-                dpg.add_button(label="How it works", callback=self._show_help_popup)
+                with dpg.group(horizontal=True):
+                    dpg.add_button(label="How it works", callback=self._show_help_popup)
+                    dpg.add_button(label="Readme", callback=self._show_readme_popup)
 
                 for group in self.context.groups:
                     dpg.add_text(f"[{group.name}]", color=(150, 150, 150))
@@ -269,6 +273,21 @@ class ImUI:
     def _show_help_popup(self):
         with dpg.window(label="Help", modal=True, width=500, height=400):
             dpg.add_text(self._load_help_text(), wrap=450)
+
+    def _load_readme_text(self) -> str:
+        if not self.readme_path:
+            return "No README.md found for this module."
+
+        try:
+            with open(self.readme_path, encoding="utf-8") as f:
+                return f.read()
+        except Exception as e:
+            return f"Failed to read README.md: {e}"
+
+    def _show_readme_popup(self):
+        with dpg.window(label="Readme", modal=True, width=650, height=600):
+            with dpg.child_window(width=-1, height=-1):
+                dpg.add_text(self._load_readme_text(), wrap=600)
 
     # -------------------------
     # RUN LOOP & STATE

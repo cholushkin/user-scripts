@@ -4,7 +4,7 @@ chcp 65001 >nul
 REM -------------------------
 REM CONFIG
 REM -------------------------
-set BACKEND=conda
+set BACKEND=micromamba
 set ENV=dev
 
 echo Running %~nx1 under [%BACKEND%:%ENV%]

@@ -1,2 +1,2 @@
 @echo off
-epy "c:\Apps\user-scripts\LifeStyle\Beeper\BeeperScript.py" %*
+epy "c:\Apps\user-scripts\Modules\Beeper\BeeperScript.py" %*

@@ -1,2 +1,2 @@
 @echo off
-epy "c:\Apps\user-scripts\FileSystem\print_tree.py" %*
+epy "c:\Apps\user-scripts\Modules\PrintTree\print_tree.py" %*

@@ -1,2 +1,2 @@
 @echo off
-epy "c:\Apps\user-scripts\Cheatsheets\emojis_all.py" %*
+epy "c:\Apps\user-scripts\Modules\Emojis\emojis_all.py" %*

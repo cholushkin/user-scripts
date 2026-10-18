@@ -4,7 +4,7 @@ from pathlib import Path
 
 # --- match Shared import pattern ---
 sys.path.insert(0, os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "../Shared")
+    os.path.join(os.path.dirname(__file__), "../../Shared")
 ))
 
 from base_script import BaseScript

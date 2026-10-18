@@ -12,7 +12,7 @@ from pathlib import Path
 
 # Ensure the 'Shared' framework module is importable
 sys.path.insert(0, os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "../Shared")
+    os.path.join(os.path.dirname(__file__), "../../Shared")
 ))
 
 from base_script import BaseScript

@@ -12,9 +12,10 @@ from domain_utils import find_project_domain
 
 
 class ImApp:
-    def __init__(self, context, title="Interactive"):
+    def __init__(self, context, title="Interactive", readme_path=None):
         self.context = context
         self.title = title
+        self.readme_path = readme_path
 
         # 1. Initialize core utilities
         self.logger = ImLogger()
@@ -86,8 +87,9 @@ class ImApp:
             logger=self.logger,
             presets=self.presets,
             binder=self.binder,
-            local_preset_managers=self.local_preset_managers, 
-            title=ui_title
+            local_preset_managers=self.local_preset_managers,
+            title=ui_title,
+            readme_path=self.readme_path,
         )
 
     # -------------------------

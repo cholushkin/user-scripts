@@ -1,6 +1,7 @@
 from typing import List, Dict, Optional
 import sys
 import os
+import inspect
 
 from context import ScriptContext, ParamGroup
 from param import Param
@@ -217,7 +218,11 @@ class BaseScript:
             ctx = self.context.to_dict()
 
         if ctx.get("interactive"):
-            app = ImApp(self.context, title=self.__class__.__name__)
+            app = ImApp(
+                self.context,
+                title=self.__class__.__name__,
+                readme_path=self.get_readme_path(),
+            )
             result = app.run()
 
             if result is None:
@@ -255,6 +260,16 @@ class BaseScript:
                 if p.name == name:
                     p.value = value
                     return
+
+    def get_readme_path(self) -> Optional[str]:
+        """Returns the path to this module's README.md, if one exists next to the script."""
+        try:
+            script_dir = os.path.dirname(os.path.abspath(inspect.getfile(self.__class__)))
+        except (TypeError, OSError):
+            return None
+
+        readme_path = os.path.join(script_dir, "README.md")
+        return readme_path if os.path.isfile(readme_path) else None
 
     def _is_left_ctrl_pressed(self) -> bool:
         if os.name != "nt":

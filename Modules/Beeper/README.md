@@ -6,6 +6,17 @@
 beeper --sequence "r s g (M S5 K)*2" --slot_duration 1.0
 ```
 
+Or directly through the launcher:
+
+```
+epy "c:\Apps\user-scripts\Modules\Beeper\BeeperScript.py" --sequence "r s g"
+```
+
+### Interactive Mode
+
+Hold **Left Ctrl** while launching `beeper` (or pass `--interactive`) to open the Dear
+PyGui UI and tweak parameters/presets before running.
+
 ### Parameters
 
 - `sequence` — DSL string describing timeline

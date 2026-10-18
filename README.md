@@ -25,12 +25,29 @@ epy script.py [arguments]
 * **Interactive UI:** Hold **Left Ctrl** while launching the script from the terminal or file manager.
 
 
-* **Command Alias:** Call wrappers directly by name (e.g., `tree` or `image_resize`).
+* **Command Alias:** Call wrappers directly by name (e.g., `tree` or `resize`).
 
 
 * **Context-Aware Presets:** Automatically switches between global defaults and localized project presets (e.g., inside a Unity project folder containing a `.uscript` directory).
 
 
+
+---
+
+## 🧩 Components
+
+Every tool lives under `Modules/<ModuleName>/`, each with its own usage manual
+(`README.md`) — also reachable from the Readme button in Interactive Mode.
+
+| Module | Alias | Description |
+| --- | --- | --- |
+| [`Modules/PrintTree`](Modules/PrintTree/README.md) | `tree` | Lists a directory tree and optionally dumps matched files' content (LLM-friendly snapshots). |
+| [`Modules/ImageResize`](Modules/ImageResize/README.md) | `resize` | Batch-resizes/converts images, including SVG → PNG rasterization. |
+| [`Modules/Emojis`](Modules/Emojis/README.md) | `emojis` | Prints a cheat-sheet grid of Unicode emoji by group. |
+| [`Modules/Beeper`](Modules/Beeper/README.md) | `beeper` | Plays a DSL-defined sequence of beeps/speech with a live timeline UI (e.g. workout intervals, Pomodoro). |
+| [`Modules/KritaExport`](Modules/KritaExport/README.md) | — | Batch-exports layered `.kra` files to JSON + baked PNGs via a bundled Krita plugin. |
+| [`Modules/PhotoshopExport`](Modules/PhotoshopExport/README.md) | — | Planned — mirrors `KritaExport` for Photoshop documents. Not implemented yet. |
+| [`Modules/ConnectDisks`](Modules/ConnectDisks/README.md) | — | Plain `.cmd` script that `subst`-maps OMV NAS shares to local drive letters. |
 
 ---
 
@@ -77,11 +94,13 @@ When invoked normally from a terminal or script, the target Python script execut
 
 Instead of typing full script paths, individual scripts can be exposed to your system `PATH` using minimal `.cmd` wrapper files:
 
-* **`image_resize.cmd`**: `epy "c:\Apps\user-scripts\Images\image_resize.py" %*`
+* **`tree.cmd`**: `epy "c:\Apps\user-scripts\Modules\PrintTree\print_tree.py" %*`
 
-* **`tree.cmd`**: `epy "c:\Apps\user-scripts\FileSystem\print_tree.py" %*`
+* **`resize.cmd`**: `epy "c:\Apps\user-scripts\Modules\ImageResize\image_resize.py" %*`
 
-* **`emojis_all.cmd`**: `epy "c:\Apps\user-scripts\Cheatsheets\emojis_all.py" %*`
+* **`emojis.cmd`**: `epy "c:\Apps\user-scripts\Modules\Emojis\emojis_all.py" %*`
+
+* **`beeper.cmd`**: `epy "c:\Apps\user-scripts\Modules\Beeper\BeeperScript.py" %*`
 
 
 ### 3. Interactive Mode (GUI)
@@ -97,6 +116,9 @@ By holding down the **Left Ctrl** key while executing a command or alias, the sc
 
 
 * **Embedded Diagnostics:** View live console output and debugging streams directly within the UI's built-in log viewer.
+
+
+* **In-App Readme:** A **Readme** button next to **How it works** opens the active module's `README.md` directly inside the UI.
 
 
 
