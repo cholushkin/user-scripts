@@ -1,0 +1,19 @@
+{
+    "mix": {
+        "ignore": true,
+        "source_path": "{track_name}.zip",
+        "bitrate": "192k",
+        "output_file": "{track_name}.mp3",
+        "effects": {            
+        }
+    },
+    "tags": {
+        "energy": 0.0,
+        "mood": 0.0,
+        "pop": 0.0,
+        "stars": 0
+    },
+    "export_parameters": {
+        "export": false
+    }
+}

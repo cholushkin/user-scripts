@@ -9,3 +9,4 @@
 /Images/image_resize.im_mode.log
 /KritaExport/KritaExportPlugin/__pycache__
 /KritaExport/__pycache__
+/KritaExport/*.log
